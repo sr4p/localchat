@@ -4,6 +4,7 @@ import { Send, Square, Plus, Clock, Zap, Hash } from "lucide-react";
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
 import { StatusBar } from "./StatusBar";
+import { ModelSelector } from "./ModelSelector";
 
 const EXAMPLE_PROMPTS = [
   {
@@ -33,12 +34,12 @@ function formatDurationSec(sec: number): string {
   return `${m}m ${s}s`;
 }
 
-/** High-resolution elapsed for live counter (updates every animation frame). */
+/** Live elapsed counter — one decimal place. */
 function formatLiveElapsedSec(sec: number): string {
-  if (sec < 60) return `${sec.toFixed(2)}s`;
+  if (sec < 60) return `${sec.toFixed(1)}s`;
   const m = Math.floor(sec / 60);
   const s = sec % 60;
-  return `${m}m ${s.toFixed(2)}s`;
+  return `${m}m ${s.toFixed(1)}s`;
 }
 
 const TPS_SMOOTH = 0.22;
@@ -173,8 +174,9 @@ function ChatInput({ animated }: ChatInputProps) {
             autoFocus
           />
 
-          <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between gap-2 px-2 pb-1">
+          <div className="absolute bottom-2.5 left-2 right-2 flex items-center justify-between gap-2 px-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              <ModelSelector />
               {showLiveStats && (
                 <LiveGenerationMetrics
                   active={showLiveStats}
@@ -183,9 +185,6 @@ function ChatInput({ animated }: ChatInputProps) {
               )}
               {showLastStats && lastCompletedMeta && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/80 px-2 py-1 shadow-[0_1px_8px_rgba(5,120,90,0.1)]">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80">
-                    Last reply
-                  </span>
                   <span className="inline-flex items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-emerald-900 ring-1 ring-emerald-500/20">
                     <Clock className="h-3 w-3 shrink-0 text-emerald-600" />
                     {formatDurationSec(lastCompletedMeta.durationSec)}
@@ -201,7 +200,7 @@ function ChatInput({ animated }: ChatInputProps) {
               <button
                 type="button"
                 onClick={stop}
-                className="flex shrink-0 items-center justify-center rounded-lg text-[#6d6d6d] hover:text-black transition-colors cursor-pointer"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#6d6d6d] hover:text-black transition-colors cursor-pointer"
                 title="Stop generating"
               >
                 <Square className="h-4 w-4 fill-current" />
@@ -210,7 +209,7 @@ function ChatInput({ animated }: ChatInputProps) {
               <button
                 type="submit"
                 disabled={!isReady || !input.trim()}
-                className="flex shrink-0 items-center justify-center rounded-lg text-[#6d6d6d] hover:text-black disabled:opacity-30 transition-colors cursor-pointer"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#6d6d6d] hover:text-black disabled:opacity-30 transition-colors cursor-pointer"
                 title="Send message"
               >
                 <Send className="h-4 w-4" />
@@ -228,12 +227,12 @@ interface ChatAppProps {
 }
 
 export function ChatApp({ onGoHome }: ChatAppProps) {
-  const { messages, isGenerating, send, status, clearChat } = useLLM();
+  const { messages, isGenerating, send, status, clearChat, suggestions } = useLLM();
   const scrollRef = useRef<HTMLElement>(null);
 
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const thinkingStartRef = useRef<number | null>(null);
-  const thinkingSecondsMapRef = useRef<Map<number, number>>(new Map());
+  const thinkingSecondsMapRef = useRef<Map<string | number, number>>(new Map());
   const prevIsGeneratingRef = useRef(false);
   const messagesRef = useRef(messages);
   const thinkingSecondsRef = useRef(thinkingSeconds);
@@ -359,6 +358,24 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
                   />
                 );
               })}
+
+              {suggestions.length > 0 && !isGenerating && (
+                <div className="mb-2">
+                  <p className="text-[11px] font-medium text-[#6d6d6d] mb-2 px-1 uppercase tracking-wider">Suggested questions</p>
+                  <div className="flex flex-col gap-1.5">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => send(s.content)}
+                        className="text-left rounded-xl border border-[#0000001f] bg-white px-4 py-2.5 text-[13px] text-[#3d3d3d] hover:border-[#5505af]/40 hover:bg-[#f5f3ff] transition-all cursor-pointer shadow-sm animate-rise-in"
+                      >
+                        {s.content}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </main>
 

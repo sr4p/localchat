@@ -1,20 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Streamdown } from "streamdown";
-import { createMathPlugin } from "@streamdown/math";
-import {
-  Pencil,
-  X,
-  Check,
-  RotateCcw,
-  Copy,
-  ClipboardCheck,
-} from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Streamdown } from 'streamdown';
+import { createMathPlugin } from '@streamdown/math';
+import { Pencil, X, Check, RotateCcw, Copy, ClipboardCheck } from 'lucide-react';
 
-import { useLLM } from "../hooks/useLLM";
-import { ReasoningBlock } from "./ReasoningBlock";
-import type { ChatMessage } from "../hooks/LLMContext";
+import { useLLM } from '../hooks/useLLM';
+import { ReasoningBlock } from './ReasoningBlock';
+import type { ChatMessage } from '../hooks/LLMContext';
 
-const math = createMathPlugin({singleDollarTextMath: true})
+const math = createMathPlugin({ singleDollarTextMath: true });
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -27,12 +20,12 @@ interface MessageBubbleProps {
 // LaTeX commands to auto-wrap with $…$ when found outside math context.
 // `args` is the number of consecutive {…} groups the command consumes.
 const MATH_COMMANDS: { prefix: string; args: number }[] = [
-  { prefix: "\\boxed{", args: 1 },
-  { prefix: "\\text{", args: 1 },
-  { prefix: "\\textbf{", args: 1 },
-  { prefix: "\\mathbf{", args: 1 },
-  { prefix: "\\mathrm{", args: 1 },
-  { prefix: "\\frac{", args: 2 },
+  { prefix: '\\boxed{', args: 1 },
+  { prefix: '\\text{', args: 1 },
+  { prefix: '\\textbf{', args: 1 },
+  { prefix: '\\mathbf{', args: 1 },
+  { prefix: '\\mathrm{', args: 1 },
+  { prefix: '\\frac{', args: 2 },
 ];
 
 /** Advance past a single `{…}` group (including nested braces). */
@@ -40,18 +33,18 @@ function skipBraceGroup(content: string, start: number): number {
   let depth = 1;
   let j = start;
   while (j < content.length && depth > 0) {
-    if (content[j] === "{") depth++;
-    else if (content[j] === "}") depth--;
+    if (content[j] === '{') depth++;
+    else if (content[j] === '}') depth--;
     j++;
   }
   return j;
 }
 
 function wrapLatexMath(content: string): string {
-  let result = "";
+  let result = '';
   let i = 0;
   // Track math context: null = not in math, "$" = inline, "$$" = display
-  let mathContext: null | "$" | "$$" = null;
+  let mathContext: null | '$' | '$$' = null;
 
   while (i < content.length) {
     const cmd = !mathContext
@@ -62,18 +55,18 @@ function wrapLatexMath(content: string): string {
       let j = skipBraceGroup(content, i + cmd.prefix.length);
 
       for (let a = 1; a < cmd.args; a++) {
-        if (content[j] === "{") {
+        if (content[j] === '{') {
           j = skipBraceGroup(content, j + 1);
         }
       }
 
       const expr = content.slice(i, j);
-      result += "$" + expr + "$";
+      result += '$' + expr + '$';
       i = j;
-    } else if (content[i] === "$") {
+    } else if (content[i] === '$') {
       // Check for $$ (display math) vs $ (inline math)
-      const isDouble = content[i + 1] === "$";
-      const token = isDouble ? "$$" : "$";
+      const isDouble = content[i + 1] === '$';
+      const token = isDouble ? '$$' : '$';
 
       if (mathContext === token) {
         mathContext = null; // closing delimiter
@@ -95,10 +88,10 @@ function wrapLatexMath(content: string): string {
 function prepareForMathDisplay(content: string): string {
   return wrapLatexMath(
     content
-      .replace(/(?<!\\)\\\[/g, "$$$$")
-      .replace(/\\\]/g, "$$$$")
-      .replace(/(?<!\\)\\\(/g, "$$$$")
-      .replace(/\\\)/g, "$$$$"),
+      .replace(/(?<!\\)\\\[/g, '$$$$')
+      .replace(/\\\]/g, '$$$$')
+      .replace(/(?<!\\)\\\(/g, '$$$$')
+      .replace(/\\\)/g, '$$$$'),
   );
 }
 
@@ -109,8 +102,8 @@ export function MessageBubble({
   thinkingSeconds,
   isGenerating,
 }: MessageBubbleProps) {
-  const { editMessage, retryMessage } = useLLM();
-  const isUser = msg.role === "user";
+  const { reQuestion, reAnswer } = useLLM();
+  const isUser = msg.role === 'user';
   const isThinking = !!isStreaming && !msg.content;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -127,9 +120,8 @@ export function MessageBubble({
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        textareaRef.current.scrollHeight + "px";
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, [isEditing]);
 
@@ -147,13 +139,13 @@ export function MessageBubble({
     const trimmed = editValue.trim();
     if (!trimmed) return;
     setIsEditing(false);
-    editMessage(index, trimmed);
-  }, [editValue, editMessage, index]);
+    reQuestion(index, trimmed);
+  }, [editValue, reQuestion, index]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") handleCancel();
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (e.key === 'Escape') handleCancel();
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSave();
       }
@@ -170,8 +162,8 @@ export function MessageBubble({
             value={editValue}
             onChange={(e) => {
               setEditValue(e.target.value);
-              e.target.style.height = "auto";
-              e.target.style.height = e.target.scrollHeight + "px";
+              e.target.style.height = 'auto';
+              e.target.style.height = e.target.scrollHeight + 'px';
             }}
             onKeyDown={handleKeyDown}
             className="w-full rounded-xl border border-[#0000001f] bg-white px-4 py-3 text-sm text-black placeholder-[#6d6d6d] focus:border-[#5505af] focus:outline-none focus:ring-1 focus:ring-[#5505af] resize-none shadow-sm"
@@ -191,7 +183,7 @@ export function MessageBubble({
               className="flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1f1f1f] disabled:opacity-40 transition-colors cursor-pointer"
             >
               <Check className="h-3 w-3" />
-              Update
+              Re-question
             </button>
           </div>
         </div>
@@ -200,9 +192,7 @@ export function MessageBubble({
   }
 
   return (
-    <div
-      className={`group flex items-start gap-2 ${isUser ? "justify-end" : "justify-start"}`}
-    >
+    <div className={`group flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {isUser && !isGenerating && (
         <button
           onClick={handleEdit}
@@ -216,8 +206,8 @@ export function MessageBubble({
       <div
         className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
           isUser
-            ? "bg-black text-white rounded-br-md whitespace-pre-wrap"
-            : "bg-white text-black rounded-bl-md border border-[#0000001f] shadow-sm"
+            ? 'bg-black text-white rounded-br-md whitespace-pre-wrap'
+            : 'bg-white text-black rounded-bl-md border border-[#0000001f] shadow-sm'
         }`}
       >
         {!isUser && msg.reasoning && (
@@ -261,9 +251,9 @@ export function MessageBubble({
             </button>
           )}
           <button
-            onClick={() => retryMessage(index)}
+            onClick={() => reAnswer(index)}
             className="rounded-md p-1 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
-            title="Retry"
+            title="Re-answer"
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </button>

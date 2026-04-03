@@ -1,0 +1,19 @@
+services:
+  postgres-test:
+    image: pgvector/pgvector:0.8.2-pg17-trixie
+    container_name: chat-ai-postgres-test
+    restart: "no"
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: chat_ai_test
+    volumes:
+      - ../docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d chat_ai_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s

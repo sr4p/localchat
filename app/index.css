@@ -1,44 +1,42 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @source "../node_modules/streamdown/dist/*.js";
 
 @font-face {
-  font-family: "Sohne";
-  src: url("/fonts/Söhne/Söhne-Leicht.otf") format("opentype");
+  font-family: 'Sohne';
+  src: url('/fonts/Söhne/Söhne-Leicht.otf') format('opentype');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Sohne";
-  src: url("/fonts/Söhne/Söhne-Buch.otf") format("opentype");
+  font-family: 'Sohne';
+  src: url('/fonts/Söhne/Söhne-Buch.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Sohne";
-  src: url("/fonts/Söhne/Söhne-Kräftig.otf") format("opentype");
+  font-family: 'Sohne';
+  src: url('/fonts/Söhne/Söhne-Kräftig.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "JetBrains Mono";
-  src: url("/fonts/JetBrains/JetBrainsMono-VariableFont_wght.ttf")
-    format("truetype");
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrains/JetBrainsMono-VariableFont_wght.ttf') format('truetype');
   font-weight: 100 800;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "JetBrains Mono";
-  src: url("/fonts/JetBrains/JetBrainsMono-Italic-VariableFont_wght.ttf")
-    format("truetype");
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrains/JetBrainsMono-Italic-VariableFont_wght.ttf') format('truetype');
   font-weight: 100 800;
   font-style: italic;
   font-display: swap;
@@ -48,11 +46,11 @@
   html,
   body {
     font-family:
-      "Sohne",
+      'Sohne',
       Inter,
       -apple-system,
       BlinkMacSystemFont,
-      "Segoe UI",
+      'Segoe UI',
       sans-serif;
     font-size: 17px;
     height: 100%;
@@ -147,43 +145,30 @@
 }
 
 .brand-surface {
-  background:
-    radial-gradient(
+  background: radial-gradient(
       ellipse 70% 50% at 86% 12%,
       var(--brand-purple-light-30),
       transparent 70%
     ),
-    radial-gradient(
-      ellipse 70% 50% at 12% 86%,
-      var(--brand-orange-30),
-      transparent 72%
-    ),
-    radial-gradient(
-      ellipse 65% 45% at 55% 52%,
-      var(--brand-purple-10),
-      transparent 72%
-    ),
+    radial-gradient(ellipse 70% 50% at 12% 86%, var(--brand-orange-30), transparent 72%),
+    radial-gradient(ellipse 65% 45% at 55% 52%, var(--brand-purple-10), transparent 72%),
     var(--brand-white);
 }
 
 /* Landing page accent motion */
 .landing-brand-glow {
-  background:
-    radial-gradient(
+  background: radial-gradient(
       ellipse 52% 38% at 12% 25%,
       var(--brand-purple-light-30),
       transparent
     ),
-    radial-gradient(
-      ellipse 48% 38% at 88% 68%,
-      var(--brand-orange-30),
-      transparent
-    );
+    radial-gradient(ellipse 48% 38% at 88% 68%, var(--brand-orange-30), transparent);
   animation: brand-shift 10s ease-in-out infinite;
 }
 
 @keyframes brand-shift {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.5;
     transform: translate3d(0, 0, 0);
   }
@@ -195,7 +180,8 @@
 
 /* Gentle pulse for "click to continue" text */
 @keyframes pulse-gentle {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
   }
   50% {
@@ -228,7 +214,7 @@
 }
 
 .font-support {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* Fade-in for chat transition */
