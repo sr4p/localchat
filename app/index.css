@@ -57,10 +57,17 @@
     overflow: hidden;
     background: #ffffff;
     color: #000000;
+    transition: background 200ms ease, color 200ms ease;
   }
 
   #root {
     height: 100%;
+  }
+
+  html.dark,
+  html.dark body {
+    background: #0f0f17;
+    color: #e0e0e0;
   }
 
   /* Sleek scrollbar */
@@ -71,6 +78,10 @@
 
   *:hover {
     scrollbar-color: #d4d4d8 transparent;
+  }
+
+  html.dark *:hover {
+    scrollbar-color: #3a3a5c;
   }
 
   ::-webkit-scrollbar {
@@ -93,6 +104,14 @@
 
   *:hover::-webkit-scrollbar-thumb:hover {
     background: #a1a1aa;
+  }
+
+  html.dark *:hover::-webkit-scrollbar-thumb {
+    background: #3a3a5c;
+  }
+
+  html.dark *:hover::-webkit-scrollbar-thumb:hover {
+    background: #4a4a6e;
   }
 
   :root {

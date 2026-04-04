@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown } from "lucide-react";
+import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown, Keyboard } from "lucide-react";
 
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
@@ -7,6 +7,10 @@ import { StatusBar } from "./StatusBar";
 import { ModelSelector } from "./ModelSelector";
 import { MessageTree } from "./MessageTree";
 import { ConversationList } from "./ConversationList";
+import { SettingsPage } from "./SettingsPage";
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
+import { TokenBudgetBanner } from "./TokenBudgetBanner";
+import { useAppSettings } from "../hooks/useAppSettings";
 
 const EXAMPLE_PROMPTS = [
   {
@@ -229,10 +233,12 @@ interface ChatAppProps {
 }
 
 export function ChatApp({ onGoHome }: ChatAppProps) {
-  const { messages, isGenerating, send, status, clearChat, suggestions, canUndo, canRedo, undo, redo, viewMode, setViewMode, sidebarOpen, setSidebarOpen, activePage } = useLLM();
+  const { messages, isGenerating, send, status, clearChat, suggestions, canUndo, canRedo, undo, redo, viewMode, setViewMode, sidebarOpen, setSidebarOpen, activePage, setActivePage, stop } = useLLM();
+  const { settings, update, reset } = useAppSettings();
   const scrollRef = useRef<HTMLElement>(null);
   const [selectedTreeId, setSelectedTreeId] = useState<string | number | null>(null);
   const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Close dropdown on outside click
   const pageDropdownRef = useRef<HTMLDivElement>(null);
@@ -247,27 +253,52 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [pageDropdownOpen]);
 
-  // Keyboard shortcuts: Ctrl+Z / Cmd+Shift+Z
+  // Keyboard shortcuts: Ctrl+Z / Cmd+Shift+Z / ? / Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isInInput = tag === 'TEXTAREA' || tag === 'INPUT';
+
+      const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+        || /Mac/.test(navigator.userAgent);
       const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // ? — toggle shortcuts (only when not in input)
+      if (e.key === '?' && !isInInput) {
+        e.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // Escape — close modals, or stop generation (only when not in input)
+      if (e.key === 'Escape') {
+        if (shortcutsOpen) {
+          e.preventDefault();
+          setShortcutsOpen(false);
+          return;
+        }
+        if (isGenerating && !isInInput) {
+          e.preventDefault();
+          stop();
+          return;
+        }
+      }
+
+      // Undo/Redo — ignore when user is typing
+      if (isInInput) return;
       if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
       }
-      if (mod && e.key === 'Z') {
-        e.preventDefault();
-        redo();
-      }
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
+      if (mod && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         redo();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, [undo, redo, shortcutsOpen, isGenerating, stop]);
 
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const thinkingStartRef = useRef<number | null>(null);
@@ -325,6 +356,32 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
       thinkingStartRef.current = null;
     }
   }, [isGenerating, lastAssistant?.role, lastAssistant?.content]);
+
+  // Settings helpers
+  const totalTokensUsed = messages.reduce(
+    (sum, m) => sum + (m.responseMeta?.tokenCount ?? 0),
+    0,
+  );
+
+  const handleResetDefaults = useCallback(() => {
+    reset();
+  }, [reset]);
+
+  // Settings page
+  if (activePage === 'settings') {
+    return (
+      <div className="flex h-full brand-surface text-black">
+        <SettingsPage
+          settings={settings}
+          update={update}
+          onResetDefaults={handleResetDefaults}
+          onGoToChat={() => setActivePage('chat')}
+          totalTokenCount={totalTokensUsed}
+        />
+        <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full brand-surface text-black">
@@ -388,12 +445,9 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
                 <button
                   onClick={() => {
                     setPageDropdownOpen(false);
+                    setActivePage('settings');
                   }}
-                  className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
-                    activePage === 'settings'
-                      ? 'bg-[#f0e8ff] text-[#5505af] font-medium'
-                      : 'text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black'
-                  }`}
+                  className="w-full text-left px-3 py-2 text-sm text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black transition-colors cursor-pointer"
                 >
                   Settings
                 </button>
@@ -403,6 +457,15 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
 
           {/* Right: controls */}
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                setShortcutsOpen(true);
+              }}
+              className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
+              title="Keyboard shortcuts (?)"
+            >
+              <Keyboard className="h-4 w-4" />
+            </button>
             <button
               onClick={clearChat}
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-opacity duration-300 cursor-pointer ${
@@ -533,12 +596,24 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
               </div>
             </main>
 
+            {/* Token budget banner */}
+            {settings.tokenBudget != null && (
+              <div className="px-4 pt-2">
+                <TokenBudgetBanner
+                  tokensUsed={totalTokensUsed}
+                  budget={settings.tokenBudget}
+                />
+              </div>
+            )}
+
             <footer className="flex-none px-4 py-3 animate-fade-in">
               <ChatInput animated />
             </footer>
           </>
         )}
       </div>
+
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

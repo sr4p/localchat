@@ -1,4 +1,6 @@
 import { useRef, useState, useCallback, useEffect, type ReactNode } from 'react';
+import type { AppSettings } from '../hooks/useAppSettings';
+import { generateTitleFromMessage } from '../utils/autoSummarize';
 import {
   pipeline,
   TextStreamer,
@@ -268,12 +270,29 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      const apiMessages = chatHistory.map((m) => ({ role: m.role, content: m.content }));
+      // Read settings for system prompt + max tokens override
+      const savedSettings = (() => {
+        try {
+          const raw = localStorage.getItem('chat-ai-webgpu-settings');
+          if (raw) return JSON.parse(raw) as Partial<AppSettings>;
+        } catch { /* ignore */ }
+        return {};
+      })();
+
+      const systemMsg = savedSettings.systemPrompt
+        ? [{ role: 'system' as const, content: savedSettings.systemPrompt }]
+        : [];
+
+      const apiMessages = [
+        ...systemMsg,
+        ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
+      ];
       const modelConfig = getModelById(activeModelIdRef.current)!;
+      const maxTokens = savedSettings.maxTokens ?? modelConfig.maxNewTokens;
 
       try {
         await generator(apiMessages, {
-          max_new_tokens: modelConfig.maxNewTokens,
+          max_new_tokens: maxTokens,
           streamer,
           stopping_criteria: stoppingCriteria.current,
           do_sample: modelConfig.supportsReasoning,
@@ -369,6 +388,21 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       if (isGeneratingRef.current) return;
       setSuggestions([]);
 
+      // Read settings for auto-summarize
+      const shouldSummarize = (() => {
+        try {
+          const raw = localStorage.getItem('chat-ai-webgpu-settings');
+          return raw ? (JSON.parse(raw).autoSummarize ?? true) : true;
+        } catch {
+          return true;
+        }
+      })();
+
+      // Helper: build title from first message
+      const buildTitle = (msg: string): string => {
+        return shouldSummarize ? generateTitleFromMessage(msg) : msg.slice(0, 50);
+      };
+
       // Auto-create conversation if none exists
       const createAndSend = async (convId: string) => {
         pushCheckpoint();
@@ -429,7 +463,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         persistAndGen();
       } else {
         api
-          .post<{ id: string; title: string }>('/api/conversations', { title: text.slice(0, 50) })
+          .post<{ id: string; title: string }>('/api/conversations', { title: buildTitle(text) })
           .then((conv) => createAndSend(conv.id))
           .catch((e) => {
             console.error('[LLMProvider] Failed to create conversation:', e);
