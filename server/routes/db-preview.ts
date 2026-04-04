@@ -24,7 +24,6 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
     const recent = await MessageRepository.find({
       order: { createdAt: 'DESC' },
       take: 5,
-      select: ['id', 'role', 'content', 'modelName', 'createdAt'],
     });
 
     return {
@@ -42,7 +41,6 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
   })
   .get('/conversations', async () => {
     const conversations = await ConversationRepository.find({
-      select: ['id', 'title', 'createdAt', 'updatedAt'],
       order: { updatedAt: 'DESC' },
     });
 
@@ -65,17 +63,6 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
     const messages = await MessageRepository.find({
       where: { conversationId: params.conversationId },
       order: { createdAt: 'ASC' },
-      select: [
-        'id',
-        'role',
-        'content',
-        'reasoning',
-        'durationSec',
-        'tokenCount',
-        'modelName',
-        'modelType',
-        'createdAt',
-      ],
     });
 
     return messages.map((m) => ({

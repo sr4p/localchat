@@ -37,6 +37,16 @@ export type LoadingStatus =
 
 export type ReasoningEffort = "low" | "medium" | "high";
 
+/** Summary info for a conversation in the sidebar list. */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  messageCount: number;
+  updatedAt: string;
+}
+
+export type ActivePage = "chat" | "history" | "settings";
+
 export interface LLMContextValue {
   status: LoadingStatus;
   messages: ChatMessage[];
@@ -73,6 +83,29 @@ export interface LLMContextValue {
   models: Array<{ id: string; displayName: string; type: string }>;
   /** Vector-based suggested questions from the same conversation. */
   suggestions: Array<{ content: string; similarity: number }>;
+  /** Undo/Redo history support. */
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Undo the last message action. */
+  undo: () => void;
+  /** Redo a previously undone message action. */
+  redo: () => void;
+  /** Current message view mode: 'linear' (default chat list) or 'tree' (branch view). */
+  viewMode: 'linear' | 'tree';
+  /** Switch between linear and tree view modes. */
+  setViewMode: (mode: 'linear' | 'tree') => void;
+  /** List of all conversations for sidebar display. */
+  conversations: ConversationSummary[];
+  /** Reload conversation list from server. */
+  loadConversations: () => Promise<void>;
+  /** Sidebar open state. */
+  sidebarOpen: boolean;
+  /** Toggle sidebar open/close. */
+  setSidebarOpen: (open: boolean) => void;
+  /** Current active page tab. */
+  activePage: ActivePage;
+  /** Switch active page tab. */
+  setActivePage: (page: ActivePage) => void;
 }
 
 export const LLMContext = createContext<LLMContextValue | null>(null);

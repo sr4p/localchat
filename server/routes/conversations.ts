@@ -4,7 +4,6 @@ import { ConversationRepository } from '../db/repositories';
 export const conversationRoutes = new Elysia({ prefix: '/conversations' })
   .get('/', async () => {
     const conversations = await ConversationRepository.find({
-      select: ['id', 'title', 'createdAt', 'updatedAt'],
       order: { updatedAt: 'DESC' },
     });
 
@@ -44,7 +43,7 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
     },
     {
       body: t.Object({
-        title: t.String(),
+        title: t.Optional(t.String()),
       }),
     },
   )
@@ -52,9 +51,11 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
     const conversation = await ConversationRepository.findOne({
       where: { id: params.id },
       relations: ['messages'],
-      order: { messages: { createdAt: 'ASC' } },
     });
     if (!conversation) return new Response('Not found', { status: 404 });
+
+    // Sort messages by createdAt in-memory (order on nested relations is unreliable with string-based entity refs)
+    conversation.messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
     const messages = conversation.messages.map((m) => ({
       id: m.id,

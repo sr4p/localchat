@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import '@server/db/pgvector-patch';
+import '../server/db/pgvector-patch';
 import { DataSource } from 'typeorm';
 import { Conversation, Message, MessageEmbedding } from '../server/db/entities';
 

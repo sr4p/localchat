@@ -46,7 +46,7 @@ export class Message {
   @Column({ name: 'model_type', type: 'text', nullable: true })
   modelType!: 'local' | 'api' | null
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ name: 'parent_id', type: 'uuid', nullable: true })
   parentId!: string | null
 
   @OneToMany('MessageEmbedding', 'message', {
@@ -54,7 +54,7 @@ export class Message {
   })
   embeddings!: MessageEmbedding[]
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date
 }
 
@@ -76,6 +76,6 @@ export class MessageEmbedding {
   @Column({ type: 'vector' as ColumnType, nullable: true })
   embedding!: number[] | null
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date
 }

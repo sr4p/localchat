@@ -20,7 +20,7 @@ export const AppDataSource = new DataSource({
   password: getEnv('DB_PASSWORD', 'postgres'),
   database: getEnv('DB_NAME', 'chat_ai'),
   entities: [Conversation, Message, MessageEmbedding],
-  synchronize: false,
+  synchronize: true,
   logging: process.env.NODE_ENV !== 'production',
 });
 

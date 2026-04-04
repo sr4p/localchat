@@ -1,15 +1,19 @@
 import 'reflect-metadata';
-import '@server/db/pgvector-patch';
+import '../server/db/pgvector-patch';
+import type { Repository } from 'typeorm';
 import { beforeAll, afterEach, afterAll, describe, expect, test } from 'bun:test';
-import { setupTestDb, teardownTestDb, truncateAll } from './setup';
-import {
-  ConversationRepository,
-  MessageRepository,
-  MessageEmbeddingRepository,
-} from '../server/db/repositories';
+import { TestDataSource, setupTestDb, teardownTestDb, truncateAll } from './setup';
+import { Conversation, Message, MessageEmbedding } from '../server/db/entities';
+
+let ConversationRepository: Repository<Conversation>;
+let MessageRepository: Repository<Message>;
+let MessageEmbeddingRepository: Repository<MessageEmbedding>;
 
 beforeAll(async () => {
   await setupTestDb();
+  ConversationRepository = TestDataSource.getRepository(Conversation);
+  MessageRepository = TestDataSource.getRepository(Message);
+  MessageEmbeddingRepository = TestDataSource.getRepository(MessageEmbedding);
 });
 
 afterEach(async () => {

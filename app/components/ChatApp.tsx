@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Plus, Clock, Zap, Hash } from "lucide-react";
+import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown } from "lucide-react";
 
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
 import { StatusBar } from "./StatusBar";
 import { ModelSelector } from "./ModelSelector";
+import { MessageTree } from "./MessageTree";
+import { ConversationList } from "./ConversationList";
 
 const EXAMPLE_PROMPTS = [
   {
@@ -227,8 +229,45 @@ interface ChatAppProps {
 }
 
 export function ChatApp({ onGoHome }: ChatAppProps) {
-  const { messages, isGenerating, send, status, clearChat, suggestions } = useLLM();
+  const { messages, isGenerating, send, status, clearChat, suggestions, canUndo, canRedo, undo, redo, viewMode, setViewMode, sidebarOpen, setSidebarOpen, activePage } = useLLM();
   const scrollRef = useRef<HTMLElement>(null);
+  const [selectedTreeId, setSelectedTreeId] = useState<string | number | null>(null);
+  const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
+
+  // Close dropdown on outside click
+  const pageDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pageDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pageDropdownRef.current && !pageDropdownRef.current.contains(e.target as Node)) {
+        setPageDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pageDropdownOpen]);
+
+  // Keyboard shortcuts: Ctrl+Z / Cmd+Shift+Z
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if (mod && e.key === 'Z') {
+        e.preventDefault();
+        redo();
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [undo, redo]);
 
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const thinkingStartRef = useRef<number | null>(null);
@@ -288,102 +327,218 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
   }, [isGenerating, lastAssistant?.role, lastAssistant?.content]);
 
   return (
-    <div className="flex h-full flex-col brand-surface text-black">
-      <header className="flex-none flex items-center justify-between border-b border-[#0000001f] px-6 py-3 h-14">
-        <button
-          onClick={onGoHome}
-          className="cursor-pointer transition-transform duration-300 hover:scale-[1.02]"
-          title="Back to home"
-        >
-          <img
-            src="/liquid.svg"
-            alt="Liquid AI"
-            className="h-6 w-auto"
-            draggable={false}
-          />
-        </button>
-        <button
-          onClick={clearChat}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-opacity duration-300 cursor-pointer ${
-            showNewChat ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-          title="New chat"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New chat
-        </button>
-      </header>
+    <div className="flex h-full brand-surface text-black">
+      {/* Sidebar */}
+      {sidebarOpen && <ConversationList onToggle={() => setSidebarOpen(false)} />}
 
-      {!hasMessages ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-4">
-          <div className="mb-8 text-center animate-rise-in">
-            <p className="text-3xl font-medium text-black">
-              What can I help you with?
-            </p>
-          </div>
-
-          <ChatInput animated />
-
-          <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-3xl animate-rise-in-delayed">
-            {EXAMPLE_PROMPTS.map(({ label, prompt }) => (
-              <button
-                key={label}
-                onClick={() => send(prompt)}
-                className="rounded-lg border border-[#0000001f] bg-white px-3 py-2 text-xs text-[#6d6d6d] hover:text-black hover:border-[#5505af] transition-colors cursor-pointer shadow-sm"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <>
-          <main
-            ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 animate-fade-in"
-          >
-            <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              {!isReady && <StatusBar />}
-
-              {messages.map((msg, i) => {
-                const isLast = i === messages.length - 1 && msg.role === "assistant";
-                return (
-                  <MessageBubble
-                    key={msg.id}
-                    msg={msg}
-                    index={i}
-                    isStreaming={isGenerating && isLast}
-                    thinkingSeconds={isLast ? thinkingSeconds : thinkingSecondsMapRef.current.get(msg.id)}
-                    isGenerating={isGenerating}
-                  />
-                );
-              })}
-
-              {suggestions.length > 0 && !isGenerating && (
-                <div className="mb-2">
-                  <p className="text-[11px] font-medium text-[#6d6d6d] mb-2 px-1 uppercase tracking-wider">Suggested questions</p>
-                  <div className="flex flex-col gap-1.5">
-                    {suggestions.map((s, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => send(s.content)}
-                        className="text-left rounded-xl border border-[#0000001f] bg-white px-4 py-2.5 text-[13px] text-[#3d3d3d] hover:border-[#5505af]/40 hover:bg-[#f5f3ff] transition-all cursor-pointer shadow-sm animate-rise-in"
-                      >
-                        {s.content}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* Header with navbar */}
+        <header className="flex-none flex items-center justify-between border-b border-[#0000001f] px-4 py-2 h-14 gap-3">
+          {/* Left: sidebar toggle + logo */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex items-center justify-center rounded-md p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
+              title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-4 w-4" />
+              ) : (
+                <PanelLeft className="h-4 w-4" />
               )}
-            </div>
-          </main>
+            </button>
+            <button
+              onClick={onGoHome}
+              className="cursor-pointer transition-transform duration-300 hover:scale-[1.02]"
+              title="Back to home"
+            >
+              <img
+                src="/liquid.svg"
+                alt="Liquid AI"
+                className="h-6 w-auto"
+                draggable={false}
+              />
+            </button>
+          </div>
 
-          <footer className="flex-none px-4 py-3 animate-fade-in">
+          {/* Center: navbar menu */}
+          <div className="relative" ref={pageDropdownRef}>
+            <button
+              onClick={() => setPageDropdownOpen(!pageDropdownOpen)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
+              title="Select page"
+            >
+              Chat
+              <ChevronDown className="h-3.5 w-3.5 text-[#6d6d6d]" />
+            </button>
+            {pageDropdownOpen && (
+              <div className="absolute top-full mt-1 left-0 w-40 rounded-lg border border-[#0000001f] bg-white shadow-lg overflow-hidden z-50">
+                <button
+                  onClick={() => {
+                    setPageDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
+                    activePage === 'chat'
+                      ? 'bg-[#f0e8ff] text-[#5505af] font-medium'
+                      : 'text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black'
+                  }`}
+                >
+                  Chat
+                </button>
+                <button
+                  onClick={() => {
+                    setPageDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
+                    activePage === 'settings'
+                      ? 'bg-[#f0e8ff] text-[#5505af] font-medium'
+                      : 'text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black'
+                  }`}
+                >
+                  Settings
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right: controls */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={clearChat}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-opacity duration-300 cursor-pointer ${
+                showNewChat ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+              title="New chat"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New chat</span>
+            </button>
+
+            {hasMessages && (
+              <div className="flex items-center gap-0.5 border-l border-[#0000001f] pl-1.5 ml-1">
+                <button
+                  onClick={undo}
+                  disabled={!canUndo || isGenerating}
+                  className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={!canRedo || isGenerating}
+                  className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  title="Redo (Ctrl+Shift+Z)"
+                >
+                  <Redo2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode(viewMode === 'linear' ? 'tree' : 'linear')}
+                  className={`flex items-center justify-center rounded-lg p-1.5 transition-colors cursor-pointer ${
+                    viewMode === 'tree'
+                      ? 'text-[#5505af] bg-[#f0e8ff]'
+                      : 'text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5]'
+                  }`}
+                  title="Toggle tree view"
+                >
+                  <GitBranch className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Main content area */}
+        {!hasMessages ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4">
+            <div className="mb-8 text-center animate-rise-in">
+              <p className="text-3xl font-medium text-black">
+                What can I help you with?
+              </p>
+            </div>
+
             <ChatInput animated />
-          </footer>
-        </>
-      )}
+
+            <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-3xl animate-rise-in-delayed">
+              {EXAMPLE_PROMPTS.map(({ label, prompt }) => (
+                <button
+                  key={label}
+                  onClick={() => send(prompt)}
+                  className="rounded-lg border border-[#0000001f] bg-white px-3 py-2 text-xs text-[#6d6d6d] hover:text-black hover:border-[#5505af] transition-colors cursor-pointer shadow-sm"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <main
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-4 py-6 animate-fade-in"
+            >
+              <div className="mx-auto flex max-w-3xl flex-col gap-4">
+                {!isReady && <StatusBar />}
+
+                {viewMode === 'tree' ? (
+                  <div className="rounded-2xl border border-[#0000001f] bg-white p-2 shadow-sm">
+                    <MessageTree
+                      messages={messages}
+                      onSelect={(id) => {
+                        setSelectedTreeId(id);
+                        const el = document.querySelector(`[data-msg-id="${id}"]`);
+                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                      selectedId={selectedTreeId}
+                    />
+                  </div>
+                ) : null}
+
+                {messages.map((msg, i) => {
+                  const isLast = i === messages.length - 1 && msg.role === "assistant";
+                  return (
+                    <div
+                      key={msg.id}
+                      data-msg-id={msg.id}
+                      className={selectedTreeId === msg.id ? 'ring-2 ring-[#5505af]/30 rounded-2xl' : ''}
+                    >
+                      <MessageBubble
+                        msg={msg}
+                        index={i}
+                        isStreaming={isGenerating && isLast}
+                        thinkingSeconds={isLast ? thinkingSeconds : thinkingSecondsMapRef.current.get(msg.id)}
+                        isGenerating={isGenerating}
+                      />
+                    </div>
+                  );
+                })}
+
+                {suggestions.length > 0 && !isGenerating && (
+                  <div className="mb-2">
+                    <p className="text-[11px] font-medium text-[#6d6d6d] mb-2 px-1 uppercase tracking-wider">Suggested questions</p>
+                    <div className="flex flex-col gap-1.5">
+                      {suggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => send(s.content)}
+                          className="text-left rounded-xl border border-[#0000001f] bg-white px-4 py-2.5 text-[13px] text-[#3d3d3d] hover:border-[#5505af]/40 hover:bg-[#f5f3ff] transition-all cursor-pointer shadow-sm animate-rise-in"
+                        >
+                          {s.content}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </main>
+
+            <footer className="flex-none px-4 py-3 animate-fade-in">
+              <ChatInput animated />
+            </footer>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -155,7 +155,7 @@ export function MessageBubble({
 
   if (isEditing) {
     return (
-      <div className="flex justify-end">
+      <div data-msg-id={msg.id} className="flex justify-end">
         <div className="w-full max-w-[80%] flex flex-col gap-2">
           <textarea
             ref={textareaRef}
@@ -192,7 +192,7 @@ export function MessageBubble({
   }
 
   return (
-    <div className={`group flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div data-msg-id={msg.id} className={`group flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {isUser && !isGenerating && (
         <button
           onClick={handleEdit}

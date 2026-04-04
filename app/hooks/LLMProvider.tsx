@@ -12,8 +12,11 @@ import {
   type ChatMessage,
   type LoadingStatus,
   type ReasoningEffort,
+  type ConversationSummary,
+  type ActivePage,
 } from './LLMContext';
 import { useEmbedding } from './useEmbedding';
+import { useChatHistory } from './useChatHistory';
 import { getModelById, DEFAULT_MODEL_ID, MODEL_REGISTRY } from '../utils/model-registry';
 import { api } from '../utils/api-client';
 
@@ -90,10 +93,36 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const activeConversationIdRef = useRef<string | null>(null);
   const [activeModelId, setActiveModelId] = useState<string>(DEFAULT_MODEL_ID);
 
+  // View mode
+  const [viewMode, setViewMode] = useState<'linear' | 'tree'>('linear');
+
+  // Undo/Redo
+  const { canUndo, canRedo, pushCheckpoint, undo, redo } = useChatHistory(messages, setMessages);
+
   // Suggestions
   const [suggestions, setSuggestions] = useState<Array<{ content: string; similarity: number }>>(
     [],
   );
+
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activePage, setActivePage] = useState<ActivePage>('chat');
+
+  // Conversations list
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const loadConversations = useCallback(async () => {
+    try {
+      const list = await api.get<ConversationSummary[]>('/api/conversations');
+      setConversations(list);
+    } catch (e) {
+      console.error('[LLMProvider] Could not load conversations:', e);
+    }
+  }, []);
+
+  // Load conversations on mount and after creating/deleting
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   // Pending user messages for embedding sync
   const pendingEmbeddingQueueRef = useRef<PendingUserMsg[]>([]);
@@ -264,31 +293,33 @@ export function LLMProvider({ children }: { children: ReactNode }) {
 
       const durationSec = Math.round(((performance.now() - genStartPerf) / 1000) * 10) / 10;
 
-      // Build final assistant message
-      let assistantMsgRef: ChatMessage | null = null;
+      // Build final assistant message — construct outside React state updater for reliable persistence
+      const finalContent = parser.content.trim();
+      const finalReasoning = parser.reasoning.trim();
+
+      const assistantMsg: ChatMessage = {
+        ...messagesRef.current[assistantIdx],
+        content: finalContent,
+        reasoning: finalReasoning || undefined,
+        modelName: modelConfig.displayName,
+        modelType: modelConfig.type as 'local' | 'api',
+        responseMeta: { durationSec, tokenCount },
+      };
+
       setMessages((prev) => {
         const updated = [...prev];
-        const prevRow = prev[assistantIdx];
-        assistantMsgRef = {
-          ...updated[assistantIdx],
-          content: parser.content.trim() || prevRow.content,
-          reasoning: parser.reasoning.trim() || prevRow.reasoning,
-          modelName: modelConfig.displayName,
-          modelType: modelConfig.type as 'local' | 'api',
-          responseMeta: { durationSec, tokenCount },
-        };
-        updated[assistantIdx] = assistantMsgRef!;
+        updated[assistantIdx] = assistantMsg;
         return updated;
       });
 
       // Persist assistant message to DB
-      if (activeConversationIdRef.current && assistantMsgRef && 'id' in assistantMsgRef) {
+      if (activeConversationIdRef.current && assistantMsg.id) {
         try {
           const saved = await api.post<SavedMessageResponse>('/api/messages', {
             conversationId: activeConversationIdRef.current,
             role: 'assistant',
-            content: (assistantMsgRef as ChatMessage).content,
-            reasoning: (assistantMsgRef as ChatMessage).reasoning,
+            content: assistantMsg.content,
+            reasoning: assistantMsg.reasoning,
             durationSec,
             tokenCount,
             modelName: modelConfig.displayName,
@@ -340,6 +371,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
 
       // Auto-create conversation if none exists
       const createAndSend = async (convId: string) => {
+        pushCheckpoint();
         setActiveConversationId(convId);
         activeConversationIdRef.current = convId;
 
@@ -368,6 +400,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       };
 
       if (activeConversationIdRef.current) {
+        pushCheckpoint();
         const userMsg: ChatMessage = {
           id: createMessageId(),
           role: 'user',
@@ -423,6 +456,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const editMessage = useCallback(
     (index: number, newContent: string) => {
       if (isGeneratingRef.current) return;
+      pushCheckpoint();
 
       setMessages((prev) => {
         const updated = prev.slice(0, index);
@@ -446,6 +480,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const retryMessage = useCallback(
     (index: number) => {
       if (isGeneratingRef.current) return;
+      pushCheckpoint();
 
       const history = messagesRef.current.slice(0, index);
       setMessages(history);
@@ -460,14 +495,27 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     setActiveConversationId(conv.id);
     activeConversationIdRef.current = conv.id;
     setMessages([]);
+    await loadConversations();
     return conv.id;
-  }, []);
+  }, [loadConversations]);
 
   const loadConversation = useCallback(async (id: string) => {
-    const data = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`);
-    setActiveConversationId(id);
-    activeConversationIdRef.current = id;
-    setMessages(data.messages.map(mapServerMessageToClient));
+    try {
+      const data = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`);
+      if (!data?.messages?.length) {
+        console.warn(`[LLMProvider] Conversation ${id} has no messages`);
+      } else {
+        console.log(`[LLMProvider] Loaded conversation ${id} with ${data.messages.length} messages`);
+      }
+      // Update active conversation ID and messages together
+      setActiveConversationId(id);
+      activeConversationIdRef.current = id;
+      setMessages(
+        data.messages ? data.messages.map(mapServerMessageToClient) : [],
+      );
+    } catch (e) {
+      console.error('[LLMProvider] Failed to load conversation:', id, e);
+    }
   }, []);
 
   const deleteConversation = useCallback(async (id: string) => {
@@ -477,7 +525,8 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       activeConversationIdRef.current = null;
       setMessages([]);
     }
-  }, []);
+    await loadConversations();
+  }, [loadConversations]);
 
   const setConversation = useCallback(
     (id: string | null) => {
@@ -493,6 +542,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const reQuestion = useCallback(
     (index: number, newContent: string) => {
       if (isGeneratingRef.current) return;
+      pushCheckpoint();
       const originalMsg = messagesRef.current[index];
       if (!originalMsg) return;
 
@@ -525,6 +575,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const reAnswer = useCallback(
     (index: number, _modelId?: string) => {
       if (isGeneratingRef.current) return;
+      pushCheckpoint();
       const assistantMsg = messagesRef.current[index];
       if (!assistantMsg) return;
 
@@ -562,6 +613,18 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         reAnswer,
         suggestions,
         models: MODEL_REGISTRY.map((m) => ({ id: m.id, displayName: m.displayName, type: m.type })),
+        canUndo,
+        canRedo,
+        undo,
+        redo,
+        viewMode,
+        setViewMode,
+        conversations,
+        loadConversations,
+        sidebarOpen,
+        setSidebarOpen,
+        activePage,
+        setActivePage,
       }}
     >
       {children}
