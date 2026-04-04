@@ -1,44 +1,45 @@
 import { Elysia, t } from 'elysia';
-import { ConversationRepository } from '../db/repositories';
+import { AppDataSource } from '../db/data-source';
+
+const idParam = t.Object({ id: t.String({ format: 'uuid' }) });
 
 export const conversationRoutes = new Elysia({ prefix: '/conversations' })
   .get('/', async () => {
-    const conversations = await ConversationRepository.find({
-      order: { updatedAt: 'DESC' },
-    });
+    const results = await AppDataSource.query(`
+      SELECT
+        c.id,
+        c.title,
+        c.created_at,
+        c.updated_at,
+        COUNT(m.id)::int AS "messageCount"
+      FROM conversations c
+      LEFT JOIN messages m ON m.conversation_id = c.id
+      GROUP BY c.id
+      ORDER BY c.updated_at DESC
+    `);
 
-    const results = await Promise.all(
-      conversations.map(async (c) => {
-        const count = await ConversationRepository.manager
-          .createQueryBuilder()
-          .select('COUNT(*)', 'count')
-          .from('messages', 'm')
-          .where('m.conversation_id = :id', { id: c.id })
-          .getRawOne();
-        return {
-          id: c.id,
-          title: c.title,
-          messageCount: Number(count?.count ?? 0),
-          createdAt: c.createdAt.toISOString(),
-          updatedAt: c.updatedAt.toISOString(),
-        };
-      }),
-    );
-
-    return results;
+    return results.map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      messageCount: r.messageCount,
+      createdAt: new Date(r.created_at).toISOString(),
+      updatedAt: new Date(r.updated_at).toISOString(),
+    }));
   })
   .post(
     '/',
     async ({ body }) => {
-      const conversation = ConversationRepository.create({
-        ...(body?.title ? { title: body.title } : {}),
-      });
-      const saved = await ConversationRepository.save(conversation);
+      const result = await AppDataSource.query(
+        `INSERT INTO conversations (title) VALUES ($1) RETURNING id, title, created_at, updated_at`,
+        [body?.title ?? 'Untitled Conversation'],
+      );
+
+      const row = result[0];
       return {
-        id: saved.id,
-        title: saved.title,
-        createdAt: saved.createdAt.toISOString(),
-        updatedAt: saved.updatedAt.toISOString(),
+        id: row.id,
+        title: row.title,
+        createdAt: new Date(row.created_at).toISOString(),
+        updatedAt: new Date(row.updated_at).toISOString(),
       };
     },
     {
@@ -48,57 +49,87 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
     },
   )
   .get('/:id', async ({ params }) => {
-    const conversation = await ConversationRepository.findOne({
-      where: { id: params.id },
-      relations: ['messages'],
-    });
-    if (!conversation) return new Response('Not found', { status: 404 });
+    const conversation = await AppDataSource.query(
+      `
+      SELECT
+        c.id AS conversation_id,
+        c.title AS conversation_title,
+        c.created_at,
+        c.updated_at,
+        m.id AS message_id,
+        m.role,
+        m.content,
+        m.reasoning,
+        m.duration_sec,
+        m.token_count,
+        m.model_name,
+        m.model_type,
+        m.parent_id,
+        m.created_at AS message_created_at
+      FROM conversations c
+      LEFT JOIN messages m ON m.conversation_id = c.id
+      WHERE c.id = $1
+      ORDER BY m.created_at ASC
+    `,
+      [params.id],
+    );
 
-    // Sort messages by createdAt in-memory (order on nested relations is unreliable with string-based entity refs)
-    conversation.messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    if (conversation.length === 0) {
+      return new Response('Not found', { status: 404 });
+    }
 
-    const messages = conversation.messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      reasoning: m.reasoning,
-      durationSec: m.durationSec,
-      tokenCount: m.tokenCount,
-      modelName: m.modelName,
-      modelType: m.modelType,
-      parentId: m.parentId,
-      createdAt: m.createdAt.toISOString(),
-    }));
+    const firstRow = conversation[0];
+    const messages = conversation
+      .filter((r: any) => r.message_id)
+      .map((r: any) => ({
+        id: r.message_id,
+        role: r.role,
+        content: r.content,
+        reasoning: r.reasoning,
+        durationSec: r.duration_sec,
+        tokenCount: r.token_count,
+        modelName: r.model_name,
+        modelType: r.model_type,
+        parentId: r.parent_id,
+        createdAt: new Date(r.message_created_at).toISOString(),
+      }));
 
     return {
-      id: conversation.id,
-      title: conversation.title,
-      createdAt: conversation.createdAt.toISOString(),
-      updatedAt: conversation.updatedAt.toISOString(),
+      id: firstRow.conversation_id,
+      title: firstRow.conversation_title,
+      createdAt: new Date(firstRow.created_at).toISOString(),
+      updatedAt: new Date(firstRow.updated_at).toISOString(),
       messages,
     };
-  })
+  }, { params: idParam })
   .delete('/:id', async ({ params }) => {
-    const result = await ConversationRepository.delete(params.id);
+    const result = await AppDataSource.query(
+      `DELETE FROM conversations WHERE id = $1`,
+      [params.id],
+    );
     if (result.affected === 0) return new Response('Not found', { status: 404 });
     return new Response(null, { status: 204 });
-  })
+  }, { params: idParam })
   .patch(
     '/:id',
     async ({ params, body }) => {
-      await ConversationRepository.update(params.id, { title: body.title });
-      const updated = await ConversationRepository.findOne({ where: { id: params.id } });
-      if (!updated) return new Response('Not found', { status: 404 });
+      const result = await AppDataSource.query(
+        `UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at`,
+        [body.title, params.id],
+      );
+      if (result.length === 0) return new Response('Not found', { status: 404 });
+      const row = result[0];
       return {
-        id: updated.id,
-        title: updated.title,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
+        id: row.id,
+        title: row.title,
+        createdAt: new Date(row.created_at).toISOString(),
+        updatedAt: new Date(row.updated_at).toISOString(),
       };
     },
     {
       body: t.Object({
         title: t.String(),
       }),
+      params: idParam,
     },
   );

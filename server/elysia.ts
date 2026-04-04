@@ -8,7 +8,16 @@ import { startDataSource } from './db/data-source';
 await startDataSource();
 
 export const elysia = new Elysia({ prefix: '/api' })
+  .onError(({ set }) => {
+    // Hide internal stack traces from clients
+    set.status = 500;
+    return { error: 'Internal server error' };
+  })
   .use(conversationRoutes)
   .use(messageRoutes)
-  .use(embeddingRoutes)
-  .use(dbPreviewRoutes);
+  .use(embeddingRoutes);
+
+// Only register debug endpoints in development
+if (process.env.NODE_ENV !== 'production') {
+  elysia.use(dbPreviewRoutes);
+}

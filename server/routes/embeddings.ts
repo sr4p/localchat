@@ -1,27 +1,40 @@
-import { Elysia, t } from 'elysia';
-import { MessageEmbeddingRepository } from '../db/repositories';
+import { Elysia, t } from 'elysia'
+import { MessageEmbeddingRepository } from '../db/repositories'
 
 export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
   .post(
     '/sync',
     async ({ body }) => {
-      let synced = 0;
+      if (!Array.isArray(body.items) || body.items.length === 0) return { synced: 0 }
+
+      const manager = MessageEmbeddingRepository.manager
+
+      // Deduplicate input by messageId (keep last occurrence)
+      const dedupMap = new Map<string, number[]>()
       for (const item of body.items) {
-        const existing = await MessageEmbeddingRepository.findOne({
-          where: { messageId: item.messageId },
-        });
-        if (existing) {
-          await MessageEmbeddingRepository.update(existing.id, { embedding: item.embedding });
-        } else {
-          const embedding = MessageEmbeddingRepository.create({
-            messageId: item.messageId,
-            embedding: item.embedding,
-          });
-          await MessageEmbeddingRepository.save(embedding);
-        }
-        synced++;
+        dedupMap.set(item.messageId, item.embedding)
       }
-      return { synced };
+      const deduped = Array.from(dedupMap.entries()).map(([messageId, embedding]) => ({
+        messageId,
+        embedding,
+      }))
+
+      const values = deduped.map((_, idx) => {
+        const vStart = idx * 2 + 1
+        return `($${vStart}::uuid, $${vStart + 1}::vector)`
+      })
+      const flatParams: (string | number[])[] = deduped.flatMap((item) => [
+        item.messageId,
+        `[${item.embedding.join(',')}]`,
+      ])
+
+      await manager.query(
+        `INSERT INTO message_embeddings (message_id, embedding) VALUES ${values.join(', ')}
+         ON CONFLICT (message_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
+        flatParams,
+      )
+
+      return { synced: deduped.length }
     },
     {
       body: t.Object({
@@ -42,7 +55,7 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
       const excludeIds = body.excludeMessageIds ?? [];
       const limit = body.limit ?? 5;
 
-      if (!embedding || embedding.length === 0) {
+      if (!Array.isArray(embedding) || embedding.length === 0) {
         return [];
       }
 
@@ -52,7 +65,8 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
         excludeIds.push('00000000-0000-0000-0000-000000000000');
       }
 
-      const results = await MessageEmbeddingRepository.manager.query(
+      const manager = MessageEmbeddingRepository.manager;
+      const results = await manager.query(
         `
       SELECT m.id, m.content, me.embedding <=> $1::vector AS similarity
       FROM message_embeddings me

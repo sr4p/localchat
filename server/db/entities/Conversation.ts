@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -9,6 +10,7 @@ import {
 import type { Message } from './Message'
 
 @Entity('conversations')
+@Index(['updatedAt'])
 export class Conversation {
   @PrimaryGeneratedColumn('uuid')
   id!: string

@@ -2,15 +2,19 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm'
 import type { ColumnType } from 'typeorm'
 import type { Conversation } from './Conversation'
 
 @Entity('messages')
+@Index(['conversationId'])
+@Index(['parentId'])
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   id!: string
@@ -59,6 +63,8 @@ export class Message {
 }
 
 @Entity('message_embeddings')
+@Index(['messageId'])
+@Unique(['messageId'])
 export class MessageEmbedding {
   @PrimaryGeneratedColumn('uuid')
   id!: string

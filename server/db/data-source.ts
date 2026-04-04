@@ -20,8 +20,13 @@ export const AppDataSource = new DataSource({
   password: getEnv('DB_PASSWORD', 'postgres'),
   database: getEnv('DB_NAME', 'chat_ai'),
   entities: [Conversation, Message, MessageEmbedding],
-  synchronize: true,
+  synchronize: process.env.NODE_ENV !== 'production',
   logging: process.env.NODE_ENV !== 'production',
+  extra: {
+    max: 20,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
+  },
 });
 
 export async function initializeDataSource(): Promise<DataSource> {
@@ -29,15 +34,32 @@ export async function initializeDataSource(): Promise<DataSource> {
   return AppDataSource.initialize();
 }
 
+async function ensureIndexes() {
+  // Unique constraint required for ON CONFLICT upserts in embeddings sync.
+  await AppDataSource.query(
+    `ALTER TABLE message_embeddings ADD CONSTRAINT uq_message_embeddings_message_id UNIQUE (message_id)`,
+  ).catch(() => {
+    // Constraint already exists — that's fine.
+  });
+
+  // HNSW index for vector similarity search (optional, fails gracefully).
+  await AppDataSource.query(
+    `CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
+    ON message_embeddings USING hnsw (embedding vector_l2_ops)
+    WITH (m = 16, ef_construction = 64)`,
+  ).catch(() => {
+    // eslint-disable-next-line no-console
+    console.error('HNSW index skipped: vector column has no dimension or pgvector version too old');
+  });
+}
+
 export async function startDataSource() {
   try {
-    console.log('Initializing TypeORM DataSource...');
     await initializeDataSource();
-    console.log('DataSource initialized successfully');
+    // await ensureIndexes();
   } catch (error) {
     await AppDataSource.destroy();
-    console.log('DataSource destroyed. Schema sync complete.');
-    console.error('Failed to sync schema:', error);
+    console.error('Failed to initialize DataSource:', error);
     process.exit(1);
   }
 }
