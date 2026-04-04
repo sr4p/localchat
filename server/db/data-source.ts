@@ -34,7 +34,6 @@ export async function startDataSource() {
     console.log('Initializing TypeORM DataSource...');
     await initializeDataSource();
     console.log('DataSource initialized successfully');
-    console.log('Note: synchronize is set to false. Schema is managed via init.sql');
   } catch (error) {
     await AppDataSource.destroy();
     console.log('DataSource destroyed. Schema sync complete.');

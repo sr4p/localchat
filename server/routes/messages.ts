@@ -1,5 +1,4 @@
 import { Elysia, t } from 'elysia';
-import { initializeDataSource } from '../db/data-source';
 import { MessageRepository } from '../db/repositories';
 
 export const messageRoutes = new Elysia({ prefix: '/messages' })
@@ -88,7 +87,6 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     },
   )
   .delete('/:id', async ({ params }) => {
-    await initializeDataSource();
     const result = await MessageRepository.delete(params.id);
     if (result.affected === 0) return new Response('Not found', { status: 404 });
     return new Response(null, { status: 204 });
