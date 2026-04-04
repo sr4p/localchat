@@ -1,14 +1,11 @@
-import { Elysia } from 'elysia'
-import { initializeDataSource } from '../db/data-source'
-import { ConversationRepository, MessageRepository } from '../db/repositories'
+import { Elysia } from 'elysia';
+import { ConversationRepository, MessageRepository } from '../db/repositories';
 
 export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
   .get('/stats', async () => {
-    await initializeDataSource()
+    const conversationCount = await ConversationRepository.count();
 
-    const conversationCount = await ConversationRepository.count()
-
-    const messageCount = await MessageRepository.count()
+    const messageCount = await MessageRepository.count();
 
     const raw = await MessageRepository.manager
       .createQueryBuilder()
@@ -17,18 +14,18 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
       .from('messages', 'm')
       .where('model_name IS NOT NULL')
       .groupBy('model_name')
-      .getRawMany()
+      .getRawMany();
 
     const usageByModel = raw.reduce<Record<string, number>>((acc, row) => {
-      acc[row.model_name ?? 'unknown'] = Number(row.count)
-      return acc
-    }, {})
+      acc[row.model_name ?? 'unknown'] = Number(row.count);
+      return acc;
+    }, {});
 
     const recent = await MessageRepository.find({
       order: { createdAt: 'DESC' },
       take: 5,
       select: ['id', 'role', 'content', 'modelName', 'createdAt'],
-    })
+    });
 
     return {
       conversationCount,
@@ -41,37 +38,45 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
         modelName: m.modelName ?? 'unknown',
         createdAt: m.createdAt.toISOString(),
       })),
-    }
+    };
   })
   .get('/conversations', async () => {
-    await initializeDataSource()
     const conversations = await ConversationRepository.find({
       select: ['id', 'title', 'createdAt', 'updatedAt'],
       order: { updatedAt: 'DESC' },
-    })
+    });
 
     const results = await Promise.all(
       conversations.map(async (c) => {
-        const count = await MessageRepository.count({ where: { conversationId: c.id } })
+        const count = await MessageRepository.count({ where: { conversationId: c.id } });
         return {
           id: c.id,
           title: c.title,
           messageCount: count,
           createdAt: c.createdAt.toISOString(),
           updatedAt: c.updatedAt.toISOString(),
-        }
+        };
       }),
-    )
+    );
 
-    return results
+    return results;
   })
   .get('/messages/:conversationId', async ({ params }) => {
-    await initializeDataSource()
     const messages = await MessageRepository.find({
       where: { conversationId: params.conversationId },
       order: { createdAt: 'ASC' },
-      select: ['id', 'role', 'content', 'reasoning', 'durationSec', 'tokenCount', 'modelName', 'modelType', 'createdAt'],
-    })
+      select: [
+        'id',
+        'role',
+        'content',
+        'reasoning',
+        'durationSec',
+        'tokenCount',
+        'modelName',
+        'modelType',
+        'createdAt',
+      ],
+    });
 
     return messages.map((m) => ({
       id: m.id,
@@ -83,5 +88,5 @@ export const dbPreviewRoutes = new Elysia({ prefix: '/db-preview' })
       modelName: m.modelName,
       modelType: m.modelType,
       createdAt: m.createdAt.toISOString(),
-    }))
-  })
+    }));
+  });

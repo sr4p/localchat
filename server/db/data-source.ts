@@ -1,15 +1,15 @@
-import 'reflect-metadata'
-import './pgvector-patch'
-import { DataSource } from 'typeorm'
-import { Conversation, Message, MessageEmbedding } from './entities'
+import 'reflect-metadata';
+import './pgvector-patch';
+import { DataSource } from 'typeorm';
+import { Conversation, Message, MessageEmbedding } from './entities';
 
 function getEnv(name: string, fallback?: string): string {
-  const value = process.env[name]
+  const value = process.env[name];
   if (value === undefined) {
-    if (fallback !== undefined) return fallback
-    throw new Error(`Missing required environment variable: ${name}`)
+    if (fallback !== undefined) return fallback;
+    throw new Error(`Missing required environment variable: ${name}`);
   }
-  return value
+  return value;
 }
 
 export const AppDataSource = new DataSource({
@@ -22,9 +22,23 @@ export const AppDataSource = new DataSource({
   entities: [Conversation, Message, MessageEmbedding],
   synchronize: false,
   logging: process.env.NODE_ENV !== 'production',
-})
+});
 
 export async function initializeDataSource(): Promise<DataSource> {
-  if (AppDataSource.isInitialized) return AppDataSource
-  return AppDataSource.initialize()
+  if (AppDataSource.isInitialized) return AppDataSource;
+  return AppDataSource.initialize();
+}
+
+export async function startDataSource() {
+  try {
+    console.log('Initializing TypeORM DataSource...');
+    await initializeDataSource();
+    console.log('DataSource initialized successfully');
+    console.log('Note: synchronize is set to false. Schema is managed via init.sql');
+  } catch (error) {
+    await AppDataSource.destroy();
+    console.log('DataSource destroyed. Schema sync complete.');
+    console.error('Failed to sync schema:', error);
+    process.exit(1);
+  }
 }

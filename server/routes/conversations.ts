@@ -1,10 +1,8 @@
 import { Elysia, t } from 'elysia';
-import { initializeDataSource } from '../db/data-source';
 import { ConversationRepository } from '../db/repositories';
 
 export const conversationRoutes = new Elysia({ prefix: '/conversations' })
   .get('/', async () => {
-    await initializeDataSource();
     const conversations = await ConversationRepository.find({
       select: ['id', 'title', 'createdAt', 'updatedAt'],
       order: { updatedAt: 'DESC' },
@@ -33,7 +31,6 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
   .post(
     '/',
     async ({ body }) => {
-      await initializeDataSource();
       const conversation = ConversationRepository.create({
         ...(body?.title ? { title: body.title } : {}),
       });
@@ -52,7 +49,6 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
     },
   )
   .get('/:id', async ({ params }) => {
-    await initializeDataSource();
     const conversation = await ConversationRepository.findOne({
       where: { id: params.id },
       relations: ['messages'],
@@ -82,7 +78,6 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
     };
   })
   .delete('/:id', async ({ params }) => {
-    await initializeDataSource();
     const result = await ConversationRepository.delete(params.id);
     if (result.affected === 0) return new Response('Not found', { status: 404 });
     return new Response(null, { status: 204 });
@@ -90,7 +85,6 @@ export const conversationRoutes = new Elysia({ prefix: '/conversations' })
   .patch(
     '/:id',
     async ({ params, body }) => {
-      await initializeDataSource();
       await ConversationRepository.update(params.id, { title: body.title });
       const updated = await ConversationRepository.findOne({ where: { id: params.id } });
       if (!updated) return new Response('Not found', { status: 404 });
