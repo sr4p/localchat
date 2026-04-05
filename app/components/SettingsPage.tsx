@@ -1,4 +1,4 @@
-import { ArrowLeft, Zap, Gauge, FileDown, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Zap, Gauge, FileDown, RotateCcw, Code } from 'lucide-react';
 import type { AppSettings } from '../hooks/useAppSettings';
 
 export interface SettingsPageProps {
@@ -170,6 +170,43 @@ export function SettingsPage({
                 Reset to defaults
               </button>
             </div>
+          </Section>
+
+          {/* Code Execution */}
+          <Section label="Code Execution" icon={<Code className="h-4 w-4 text-[#5505af]" />}>
+            <SettingRow>
+              <span className="text-sm text-[#3d3d3d]">JavaScript</span>
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-medium text-emerald-700">Always on</span>
+            </SettingRow>
+            <p className="px-4 pb-2 text-[11px] text-[#6d6d6d]">
+              Runs in a sandboxed Web Worker (no DOM access).
+            </p>
+            <SettingRow>
+              <span className="text-sm text-[#3d3d3d]">Python</span>
+              <Toggle
+                enabled={settings.enablePythonExec ?? false}
+                onChange={() => update('enablePythonExec', !settings.enablePythonExec)}
+                label="Enable Python execution"
+              />
+            </SettingRow>
+            {settings.enablePythonExec && (
+              <p className="px-4 pb-2 text-[11px] text-[#6d6d6d]">
+                Loads Pyodide (~10 MB) from CDN on first use.
+              </p>
+            )}
+            <SettingRow>
+              <span className="text-sm text-[#3d3d3d]">SQL (SQLite)</span>
+              <Toggle
+                enabled={settings.enableSQLExec ?? false}
+                onChange={() => update('enableSQLExec', !settings.enableSQLExec)}
+                label="Enable SQL execution"
+              />
+            </SettingRow>
+            {settings.enableSQLExec && (
+              <p className="px-4 pb-2 text-[11px] text-[#6d6d6d]">
+                Loads sql.js (~500 KB) from CDN. Runs in memory per execution.
+              </p>
+            )}
           </Section>
             </div>
           </div>

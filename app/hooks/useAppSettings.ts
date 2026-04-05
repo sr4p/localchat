@@ -7,6 +7,8 @@ export interface AppSettings {
   autoSummarize: boolean;
   tokenBudget: number | null;
   fontSize: number;
+  enablePythonExec: boolean;
+  enableSQLExec: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -16,6 +18,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoSummarize: true,
   tokenBudget: null,
   fontSize: 17,
+  enablePythonExec: false,
+  enableSQLExec: false,
 };
 
 const STORAGE_KEY = 'chat-ai-webgpu-settings';

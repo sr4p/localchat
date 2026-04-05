@@ -13,6 +13,7 @@ import { SettingsPage } from "./SettingsPage";
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { TokenBudgetBanner } from "./TokenBudgetBanner";
 import { useAppSettings } from "../hooks/useAppSettings";
+import { CodeExecContext } from "../context/CodeExecContext";
 
 const EXAMPLE_PROMPTS = [
   {
@@ -463,6 +464,10 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
                   </div>
                 ) : null}
 
+                <CodeExecContext.Provider value={{
+                  enablePythonExec: settings.enablePythonExec ?? false,
+                  enableSQLExec: settings.enableSQLExec ?? false,
+                }}>
                 {messages.map((msg, i) => {
                   const isLast = i === messages.length - 1 && msg.role === "assistant";
                   return (
@@ -499,6 +504,7 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
                     </div>
                   </div>
                 )}
+                </CodeExecContext.Provider>
               </div>
             </main>
 

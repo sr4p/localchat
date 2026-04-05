@@ -1,13 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Streamdown } from 'streamdown';
 import { createMathPlugin } from '@streamdown/math';
+import { code } from '@streamdown/code';
 import { Pencil, X, Check, RotateCcw, Copy, ClipboardCheck } from 'lucide-react';
 
 import { useLLM } from '../hooks/useLLM';
 import { ReasoningBlock } from './ReasoningBlock';
+import { ExecutableCodeBlock } from './ExecutableCodeBlock';
 import type { ChatMessage } from '../hooks/LLMContext';
+import type { PluginConfig } from 'streamdown';
 
 const math = createMathPlugin({ singleDollarTextMath: true });
+
+const EXEC_RENDERERS: PluginConfig['renderers'] = [
+  {
+    language: ['javascript', 'js', 'typescript', 'ts', 'python', 'py', 'sql', 'sqlite'],
+    component: ExecutableCodeBlock,
+  },
+];
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -93,6 +103,10 @@ function prepareForMathDisplay(content: string): string {
       .replace(/(?<!\\)\\\(/g, '$$$$')
       .replace(/\\\)/g, '$$$$'),
   );
+}
+
+function makePlugins(): PluginConfig {
+  return { math, code, renderers: EXEC_RENDERERS };
 }
 
 export function MessageBubble({
@@ -222,11 +236,7 @@ export function MessageBubble({
           isUser ? (
             msg.content
           ) : (
-            <Streamdown
-              plugins={{ math }}
-              parseIncompleteMarkdown={false}
-              isAnimating={isStreaming}
-            >
+            <Streamdown plugins={makePlugins()} parseIncompleteMarkdown={false} isAnimating={isStreaming}>
               {prepareForMathDisplay(msg.content)}
             </Streamdown>
           )

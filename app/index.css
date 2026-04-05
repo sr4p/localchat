@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 
 @source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
 
 @font-face {
   font-family: 'Sohne';
@@ -160,6 +161,28 @@
     --input: var(--brand-black-10);
     --ring: var(--brand-purple);
     --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: #0f0f17;
+    --foreground: #e0e0e0;
+    --card: #1a1a2e;
+    --card-foreground: #e0e0e0;
+    --popover: #1a1a2e;
+    --popover-foreground: #e0e0e0;
+    --primary: #e0e0e0;
+    --primary-foreground: #0f0f17;
+    --secondary: #1a1a2e;
+    --secondary-foreground: #e0e0e0;
+    --muted: #2a2a4a;
+    --muted-foreground: #8888aa;
+    --accent: var(--brand-purple-10);
+    --accent-foreground: #e0e0e0;
+    --destructive: #dc2626;
+    --destructive-foreground: var(--brand-white);
+    --border: var(--brand-white-10);
+    --input: var(--brand-white-10);
+    --ring: var(--brand-purple-light);
   }
 }
 
