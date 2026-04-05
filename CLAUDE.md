@@ -60,16 +60,19 @@ DB_NAME=chat_ai
 **State management:** React Context via two providers:
 
 - **EmbeddingProvider** (`app/hooks/EmbeddingProvider.tsx`): Loads Qwen3 embedding model on WebGPU, provides `generate(text)` and `generateBatch(texts)`
-- **LLMProvider** (`app/hooks/LLMProvider.tsx`): Manages chat state, model loading, generation, conversation persistence. Provides `send`, `stop`, `editMessage`, `reQuestion`, `reAnswer`, `createConversation`, `loadConversation`, `deleteConversation`, model switching via `activeModelId`/`setActiveModelId`, vector suggestions via `suggestions` state, undo/redo via `undo`/`redo`/`canUndo`/`canRedo`, sidebar toggle via `sidebarOpen`/`setSidebarOpen`, conversation list via `conversations`/`loadConversations`, and page navigation via `activePage`/`setActivePage`
+- **LLMProvider** (`app/hooks/LLMProvider.tsx`): Manages chat state, model loading, generation, conversation persistence. Provides `send`, `stop`, `editMessage`, `reQuestion`, `reAnswer`, `createConversation`, `loadConversation`, `deleteConversation`, model switching via `activeModelId`/`setActiveModelId`, vector suggestions via `suggestions` state, undo/redo via `undo`/`redo`/`canUndo`/`canRedo`, sidebar toggle via `sidebarOpen`/`setSidebarOpen`, conversation list via `conversations`/`loadConversations`, and page navigation via `activePage`/`setActivePage`. Reads settings from `localStorage` to inject system prompt and max tokens into generation, and auto-generates conversation titles using `autoSummarize` when enabled.
 
 **Key components:**
 
-- `ChatApp` — main chat UI with sidebar, header navbar, message list, tree view, undo/redo
+- `ChatApp` — main chat UI with sidebar, header navbar, message list, tree view, undo/redo, settings routing
 - `MessageBubble` — individual message display with edit/re-question/re-answer/copy
 - `MessageTree` — renders messages as parent/child tree nodes
 - `ConversationList` — left sidebar conversation history panel
 - `ConversationItem` — single conversation row in sidebar
 - `ModelSelector` — embedded model pill in input field
+- `SettingsPage` — settings UI (theme, generation, budget, data) at `activePage === 'settings'`
+- `KeyboardShortcutsModal` — shortcuts help dialog, toggled with `?` key
+- `TokenBudgetBanner` — color-coded usage indicator beneath chat
 - `LiquidIntro` / `LandingPage` — splash/landing screens
 
 ### API Routes (`server/routes/`)
@@ -115,6 +118,14 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 2. On each user message sent, embedding is generated client-side and posted to `/api/embeddings/sync`
 3. After assistant responds, suggestions are fetched by embedding the last user message and querying `/api/embeddings/suggestions`
 4. Suggestions appear as inline cards below messages
+
+### Settings & Utilities
+
+**`useAppSettings` hook** (`app/hooks/useAppSettings.ts`): React hook for reading/updating user settings from `localStorage`. Provides `settings`, `update(key, value)`, and `reset()`. Manages `.dark` class on `<html>` for theme toggling and `--chat-font-size` CSS variable for font sizing.
+
+**`autoSummarize` utility** (`app/utils/autoSummarize.ts`): Generates concise conversation titles from the first user message. Strips code blocks, inline code, URLs, markdown links, and LaTeX. Truncates to 50 chars at word boundary.
+
+**`exportChat` utility** (`app/utils/exportChat.ts`): Downloads conversations as JSON (full data with metadata) or Markdown (readable format with reasoning in `<details>`). Slug-based filename from conversation title.
 
 ## Features
 
@@ -182,7 +193,42 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 - **Tree persistence** — branched messages stored as parent/child via `parentId` in messages table
 - **View toggle** — switch between flat list and tree hierarchy via `GitBranch` button in header
 
-## Server Architecture
+### Settings & Preferences
+
+- **Settings page** — accessible from navbar dropdown, manages all user preferences via `activePage` routing
+- **System prompt** — configurable in Settings, injected as first system message in generation context
+- **Max tokens override** — per-user token limit overrides model defaults during generation
+- **Font size** — 14–22px slider, scoped to `--chat-font-size` CSS custom property on `:root`
+- **Persistent storage** — all settings stored in `localStorage` via `useAppSettings` hook
+
+### Theme & Appearance
+
+- **Dark mode** — toggle via Settings, toggles `.dark` class on `<html>` with full CSS variable overrides
+- **Smooth transitions** — background/color transition on theme switch (200ms ease)
+- **Dark scrollbar** — custom scrollbar colors for dark mode
+
+### Keyboard Shortcuts
+
+- **`?`** — toggle shortcuts help modal (ignored when typing in input)
+- **`Ctrl+Z` / `Cmd+Z`** — undo last message action
+- **`Ctrl+Shift+Z` / `Cmd+Shift+Z`** — redo undone action
+- **`Enter`** — send message
+- **`Shift+Enter`** — new line in textarea
+- **`Escape`** — close modals, stop generation (ignored when typing in input)
+
+### Token Management
+
+- **Token budget** — configurable limit (1,000–100,000) with banner showing usage
+- **Usage states** — green (under 80%), orange warning (80–100%), red exceeded (over 100%)
+- **Animated progress bar** — visual fill showing percentage of budget consumed
+- **Auto-summarize titles** — generates conversation title from first user message by default (can be toggled off)
+
+### Data Export
+
+- **Export conversation** — download as JSON (full data with metadata) or Markdown (readable format)
+- **JSON export** — includes role, content, reasoning, duration, tokenCount, modelName per message
+- **Markdown export** — heading-based formatting with `<details>` for reasoning blocks
+- **File naming** — slug-based filenames derived from conversation title
 
 ### Database (`server/db/`)
 
