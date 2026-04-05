@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Sun, Moon, Zap, Gauge, FileDown, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Zap, Gauge, FileDown, RotateCcw } from 'lucide-react';
 import type { AppSettings } from '../hooks/useAppSettings';
 
 export interface SettingsPageProps {
@@ -43,18 +42,6 @@ export function SettingsPage({
   onGoToChat,
   totalTokenCount,
 }: SettingsPageProps) {
-  const [dark, setDark] = useState(settings.theme === 'dark');
-
-  useEffect(() => {
-    setDark(settings.theme === 'dark');
-  }, [settings.theme]);
-
-  const handleThemeChange = () => {
-    const next = dark ? 'light' : 'dark';
-    update('theme', next);
-    setDark(!dark);
-  };
-
   const handleBudgetToggle = () => {
     if (settings.tokenBudget != null) {
       update('tokenBudget', null);
@@ -67,53 +54,31 @@ export function SettingsPage({
     settings.tokenBudget != null && totalTokenCount > settings.tokenBudget;
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-[#0000001f] px-6 py-4">
-        <button
-          onClick={onGoToChat}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black transition-colors cursor-pointer"
-          title="Back to chat"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <h1 className="text-lg font-semibold text-black">Settings</h1>
-      </div>
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-[#00000066] backdrop-blur-sm animate-fade-in"
+        onClick={onGoToChat}
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto max-w-2xl space-y-6">
-          {/* Appearance */}
-          <Section label="Appearance" icon={<Sun className="h-4 w-4 text-[#5505af]" />}>
-            <SettingRow>
-              <span className="text-sm text-[#3d3d3d]">Theme</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#6d6d6d]">
-                  {dark ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-                  {dark ? 'Dark' : 'Light'}
-                </span>
-                <Toggle enabled={dark} onChange={handleThemeChange} label="Toggle theme" />
-              </div>
-            </SettingRow>
-            <SettingRow>
-              <span className="text-sm text-[#3d3d3d]">Font size</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={14}
-                  max={22}
-                  step={1}
-                  value={settings.fontSize}
-                  onChange={(e) => update('fontSize', Number(e.target.value))}
-                  className="w-32 accent-[#5505af]"
-                />
-                <span className="flex h-6 w-10 items-center justify-center rounded-md bg-[#f8f8fa] text-xs font-medium text-[#3d3d3d]">
-                  {settings.fontSize}
-                </span>
-              </div>
-            </SettingRow>
-          </Section>
+      {/* Modal */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg rounded-2xl border border-[#0000001f] bg-white shadow-2xl animate-rise-in overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-2 border-b border-[#0000001f] px-6 py-4">
+            <button
+              onClick={onGoToChat}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black transition-colors cursor-pointer"
+              title="Close settings"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <h1 className="text-lg font-semibold text-black">Settings</h1>
+          </div>
 
+          {/* Content */}
+          <div className="overflow-y-auto max-h-[70vh] px-6 py-6">
+            <div className="space-y-6">
           {/* Generation */}
           <Section label="Generation" icon={<Zap className="h-4 w-4 text-[#5505af]" />}>
             <SettingRow>
@@ -206,9 +171,11 @@ export function SettingsPage({
               </button>
             </div>
           </Section>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

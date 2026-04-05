@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown, Keyboard, Search } from "lucide-react";
+import { Send, Square, Clock, Zap, Hash, PanelLeft, PanelLeftClose, Keyboard, Search } from "lucide-react";
 import { SearchModal } from "./SearchModal";
+import { RightPanel } from "./RightPanel";
 
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
@@ -238,23 +239,9 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
   const { settings, update, reset } = useAppSettings();
   const scrollRef = useRef<HTMLElement>(null);
   const [selectedTreeId, setSelectedTreeId] = useState<string | number | null>(null);
-  const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { setConversation } = useLLM();
-
-  // Close dropdown on outside click
-  const pageDropdownRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!pageDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (pageDropdownRef.current && !pageDropdownRef.current.contains(e.target as Node)) {
-        setPageDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [pageDropdownOpen]);
 
   // Keyboard shortcuts: Ctrl+Z / Cmd+Shift+Z / ? / Escape
   useEffect(() => {
@@ -321,7 +308,6 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
 
   const isReady = status.state === "ready";
   const hasMessages = messages.length > 0;
-  const showNewChat = isReady && hasMessages && !isGenerating;
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -377,30 +363,14 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
     reset();
   }, [reset]);
 
-  // Settings page
-  if (activePage === 'settings') {
-    return (
-      <div className="flex h-full brand-surface text-black">
-        <SettingsPage
-          settings={settings}
-          update={update}
-          onResetDefaults={handleResetDefaults}
-          onGoToChat={() => setActivePage('chat')}
-          totalTokenCount={totalTokensUsed}
-        />
-        <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full brand-surface text-black">
       {/* Sidebar */}
       {sidebarOpen && <ConversationList onToggle={() => setSidebarOpen(false)} />}
 
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Header with navbar */}
-        <header className="flex-none flex items-center justify-between border-b border-[#0000001f] px-4 py-2 h-14 gap-3">
+        {/* Header */}
+        <header className="flex-none flex items-center justify-between border-b border-[#0000001f] px-4 py-2 h-14">
           {/* Left: sidebar toggle + logo */}
           <div className="flex items-center gap-2">
             <button
@@ -428,103 +398,22 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
             </button>
           </div>
 
-          {/* Center: navbar menu */}
-          <div className="relative" ref={pageDropdownRef}>
-            <button
-              onClick={() => setPageDropdownOpen(!pageDropdownOpen)}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
-              title="Select page"
-            >
-              Chat
-              <ChevronDown className="h-3.5 w-3.5 text-[#6d6d6d]" />
-            </button>
-            {pageDropdownOpen && (
-              <div className="absolute top-full mt-1 left-0 w-40 rounded-lg border border-[#0000001f] bg-white shadow-lg overflow-hidden z-50">
-                <button
-                  onClick={() => {
-                    setPageDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
-                    activePage === 'chat'
-                      ? 'bg-[#f0e8ff] text-[#5505af] font-medium'
-                      : 'text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black'
-                  }`}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => {
-                    setPageDropdownOpen(false);
-                    setActivePage('settings');
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#6d6d6d] hover:bg-[#f5f5f5] hover:text-black transition-colors cursor-pointer"
-                >
-                  Settings
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right: controls */}
+          {/* Right: search + shortcuts */}
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setSearchOpen(true)}
               className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
-              title="Search messages"
+              title="Search messages (⌘K)"
             >
               <Search className="h-4 w-4" />
             </button>
             <button
-              onClick={() => {
-                setShortcutsOpen(true);
-              }}
+              onClick={() => setShortcutsOpen(true)}
               className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
               title="Keyboard shortcuts (?)"
             >
               <Keyboard className="h-4 w-4" />
             </button>
-            <button
-              onClick={clearChat}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-opacity duration-300 cursor-pointer ${
-                showNewChat ? "opacity-100" : "opacity-0 pointer-events-none"
-              }`}
-              title="New chat"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">New chat</span>
-            </button>
-
-            {hasMessages && (
-              <div className="flex items-center gap-0.5 border-l border-[#0000001f] pl-1.5 ml-1">
-                <button
-                  onClick={undo}
-                  disabled={!canUndo || isGenerating}
-                  className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
-                  title="Undo (Ctrl+Z)"
-                >
-                  <Undo2 className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={redo}
-                  disabled={!canRedo || isGenerating}
-                  className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
-                  title="Redo (Ctrl+Shift+Z)"
-                >
-                  <Redo2 className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode(viewMode === 'linear' ? 'tree' : 'linear')}
-                  className={`flex items-center justify-center rounded-lg p-1.5 transition-colors cursor-pointer ${
-                    viewMode === 'tree'
-                      ? 'text-[#5505af] bg-[#f0e8ff]'
-                      : 'text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5]'
-                  }`}
-                  title="Toggle tree view"
-                >
-                  <GitBranch className="h-4 w-4" />
-                </button>
-              </div>
-            )}
           </div>
         </header>
 
@@ -629,6 +518,33 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
           </>
         )}
       </div>
+
+      {/* Right panel */}
+      <RightPanel
+        activePage={activePage}
+        viewMode={viewMode}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        isGenerating={isGenerating}
+        onSetActivePage={setActivePage}
+        onNewChat={clearChat}
+        onSearch={() => setSearchOpen(true)}
+        onUndo={undo}
+        onRedo={redo}
+        onToggleTree={() => setViewMode(viewMode === 'linear' ? 'tree' : 'linear')}
+        onShortcuts={() => setShortcutsOpen(true)}
+      />
+
+      {/* Settings modal */}
+      {activePage === 'settings' && (
+        <SettingsPage
+          settings={settings}
+          update={update}
+          onResetDefaults={handleResetDefaults}
+          onGoToChat={() => setActivePage('chat')}
+          totalTokenCount={totalTokensUsed}
+        />
+      )}
 
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SearchModal
