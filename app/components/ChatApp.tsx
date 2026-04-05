@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Clock, Zap, Hash, PanelLeft, PanelLeftClose, Keyboard, Search } from "lucide-react";
+import { Send, Square, Clock, Zap, Hash, PanelLeft, PanelLeftClose, Keyboard, Search, ChevronLeft } from "lucide-react";
 import { SearchModal } from "./SearchModal";
 import { RightPanel } from "./RightPanel";
 
@@ -110,6 +110,58 @@ function LiveGenerationMetrics({
           {display.tpsSmooth.toFixed(1)} tok/s
         </span>
       )}
+    </div>
+  );
+}
+
+function SuggestionStrip({ suggestions, send }: { suggestions: { content: string }[]; send: (text: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setScrollable(el.scrollWidth > el.clientWidth + 1);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const scrollLeft = () => {
+    ref.current?.scrollBy({ left: -300, behavior: "smooth" });
+  };
+
+  return (
+    <div className="mx-auto mb-2 max-w-3xl animate-rise-in">
+      <div className="relative flex items-center gap-1.5">
+        {scrollable && (
+          <button
+            type="button"
+            onClick={scrollLeft}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/90 text-[11px] text-[#6d6d6d] hover:text-black hover:bg-white transition-colors cursor-pointer shadow-sm ring-1 ring-[#0000001f]"
+            title="Scroll left"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <div
+          ref={ref}
+          className="flex flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-0.5"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => send(s.content)}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-[#0000001f] bg-white px-2.5 py-1 text-[12px] font-medium text-[#3d3d3d] hover:border-[#5505af]/50 hover:text-[#5505af] hover:bg-[#f5f3ff] transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            >
+              <Zap className="h-3 w-3 shrink-0 text-[#5505af]/50" />
+              {s.content.length > 48 ? s.content.slice(0, 48) + "…" : s.content}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -486,24 +538,6 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
                     </div>
                   );
                 })}
-
-                {suggestions.length > 0 && !isGenerating && (
-                  <div className="mb-2">
-                    <p className="text-[11px] font-medium text-[#6d6d6d] mb-2 px-1 uppercase tracking-wider">Suggested questions</p>
-                    <div className="flex flex-col gap-1.5">
-                      {suggestions.map((s, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => send(s.content)}
-                          className="text-left rounded-xl border border-[#0000001f] bg-white px-4 py-2.5 text-[13px] text-[#3d3d3d] hover:border-[#5505af]/40 hover:bg-[#f5f3ff] transition-all cursor-pointer shadow-sm animate-rise-in"
-                        >
-                          {s.content}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 </CodeExecContext.Provider>
               </div>
             </main>
@@ -519,6 +553,9 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
             )}
 
             <footer className="flex-none px-4 py-3 animate-fade-in">
+              {/* Suggestion strip above input */}
+              {suggestions.length > 0 && !isGenerating && <SuggestionStrip suggestions={suggestions} send={send} />}
+
               <ChatInput animated />
             </footer>
           </>
