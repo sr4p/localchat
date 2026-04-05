@@ -76,9 +76,9 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
         AND m.role = 'user'
         AND m.id != ALL($3::uuid[])
       ORDER BY similarity ASC
-      LIMIT $4
+      LIMIT ${Number(limit)}
     `,
-        [vectorStr, convId, excludeIds, limit],
+        [vectorStr, convId, excludeIds],
       );
 
       return results.map((r: any) => ({
@@ -107,9 +107,9 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
       // Full-text search across all message content
       // If conversationId is provided, scope to that conversation
       const params: (string | number)[] = [`%${query}%`];
+      const safeLimit = Math.min(Number(limit), 100);
+
       const convFilter = conversationId ? 'AND m.conversation_id = $2' : '';
-      const idx = conversationId ? 2 : 1;
-      params.push(limit);
 
       const rows = await AppDataSource.query(
         `
@@ -121,7 +121,7 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
         WHERE m.content ILIKE $1 ${convFilter}
           AND m.role IN ('user', 'assistant')
         ORDER BY m.created_at DESC
-        LIMIT $${idx}
+        LIMIT ${safeLimit}
       `,
         params,
       );
