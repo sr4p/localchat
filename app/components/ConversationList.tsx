@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { Plus, X } from 'lucide-react';
 import { ConversationItem } from './ConversationItem';
 import { useLLM } from '../hooks/useLLM';
+import { toast } from '../utils/toast';
 
 interface ConversationListProps {
   onToggle: () => void;
@@ -13,6 +14,14 @@ export function ConversationList({ onToggle }: ConversationListProps) {
   const handleNewChat = useCallback(async () => {
     await createConversation();
   }, [createConversation]);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await deleteConversation(id);
+      toast.success('Conversation deleted');
+    },
+    [deleteConversation],
+  );
 
   return (
     <aside
@@ -56,7 +65,7 @@ export function ConversationList({ onToggle }: ConversationListProps) {
                   conversation={conv}
                   isActive={conv.id === activeConversationId}
                   onClick={() => setConversation(conv.id)}
-                  onDelete={() => deleteConversation(conv.id)}
+                  onDelete={() => handleDelete(conv.id)}
                 />
               ))}
             </div>

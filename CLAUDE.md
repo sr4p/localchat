@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
+This project is a Private Chai AI Local Chat App for Me
 A browser-based AI chat application that runs LLM inference locally via WebGPU using `@huggingface/transformers`. The app uses Next.js for the frontend with server-side API routes powered by Elysia.js, and PostgreSQL with pgvector for conversation history and embedding-based suggestions.
 
 ## Tech Stack
@@ -287,26 +288,26 @@ This project should use the following skills for optimal development:
 
 When developing features, follow this 5-phase cycle:
 
-| Phase | Trigger | Tool | Agent/Skill |
-|-------|---------|------|-------------|
-| **1. Plan** | "plan feature X" / unclear requirements | `Agent` | `Plan` subagent |
-| **2. Code** | Plan approved | `Agent` (parallel specialists) | See Coding Specialist Agents below |
-| **3. Debug** | "fix this" / test failure / unexpected behavior | `Agent` | `bug-reproduction-validator` |
-| **4. Review** | After code written | `Agent` (parallel) | `code-reviewer` + `security-auditor` |
-| **5. Iterate** | Review feedback | Main context | Direct edit, then re-review |
+| Phase          | Trigger                                         | Tool                           | Agent/Skill                          |
+| -------------- | ----------------------------------------------- | ------------------------------ | ------------------------------------ |
+| **1. Plan**    | "plan feature X" / unclear requirements         | `Agent`                        | `Plan` subagent                      |
+| **2. Code**    | Plan approved                                   | `Agent` (parallel specialists) | See Coding Specialist Agents below   |
+| **3. Debug**   | "fix this" / test failure / unexpected behavior | `Agent`                        | `bug-reproduction-validator`         |
+| **4. Review**  | After code written                              | `Agent` (parallel)             | `code-reviewer` + `security-auditor` |
+| **5. Iterate** | Review feedback                                 | Main context                   | Direct edit, then re-review          |
 
 ### Coding Specialist Agents
 
 Delegate to the right agent based on what layer is being touched:
 
-| Layer | Agent |
-|-------|-------|
-| Frontend UI / components | `frontend-design` |
-| TypeScript logic / types | `javascript-typescript:typescript-pro` |
-| API routes (Elysia.js) | `backend-development:api-design-principles` |
+| Layer                          | Agent                                       |
+| ------------------------------ | ------------------------------------------- |
+| Frontend UI / components       | `frontend-design`                           |
+| TypeScript logic / types       | `javascript-typescript:typescript-pro`      |
+| API routes (Elysia.js)         | `backend-development:api-design-principles` |
 | Database / schema / migrations | `backend-development:architecture-patterns` |
-| Tests | `backend-development:test-automator` |
-| Performance concerns | `backend-development:performance-engineer` |
+| Tests                          | `backend-development:test-automator`        |
+| Performance concerns           | `backend-development:performance-engineer`  |
 
 ### Review Gate (run in parallel after implementing)
 

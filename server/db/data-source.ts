@@ -48,15 +48,15 @@ async function ensureIndexes() {
     ON message_embeddings USING hnsw (embedding vector_l2_ops)
     WITH (m = 16, ef_construction = 64)`,
   ).catch(() => {
-    // eslint-disable-next-line no-console
-    console.error('HNSW index skipped: vector column has no dimension or pgvector version too old');
+    // Index creation failed silently — pgvector may not support HNSW yet.
+    // The fallback is sequential scan which works but is slower.
   });
 }
 
 export async function startDataSource() {
   try {
     await initializeDataSource();
-    // await ensureIndexes();
+    await ensureIndexes();
   } catch (error) {
     await AppDataSource.destroy();
     console.error('Failed to initialize DataSource:', error);

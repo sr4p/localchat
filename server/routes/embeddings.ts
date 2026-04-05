@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia'
+import { AppDataSource } from '../db/data-source'
 import { MessageEmbeddingRepository } from '../db/repositories'
 
 export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
@@ -91,6 +92,58 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
         embedding: t.Array(t.Number()),
         excludeMessageIds: t.Optional(t.Array(t.String())),
         limit: t.Optional(t.Number()),
+      }),
+    },
+  )
+  .post(
+    '/search',
+    async ({ body }) => {
+      const { query, limit = 10, conversationId } = body;
+
+      if (!query || query.trim().length === 0) {
+        return { results: [], total: 0 };
+      }
+
+      // Full-text search across all message content
+      // If conversationId is provided, scope to that conversation
+      const params: (string | number)[] = [`%${query}%`];
+      const convFilter = conversationId ? 'AND m.conversation_id = $2' : '';
+      const idx = conversationId ? 2 : 1;
+      params.push(limit);
+
+      const rows = await AppDataSource.query(
+        `
+        SELECT m.id, m.content, m.role, m.model_name,
+               m.conversation_id, c.title AS conversation_title,
+               m.created_at
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.content ILIKE $1 ${convFilter}
+          AND m.role IN ('user', 'assistant')
+        ORDER BY m.created_at DESC
+        LIMIT $${idx}
+      `,
+        params,
+      );
+
+      return {
+        results: rows.map((r: any) => ({
+          id: r.id,
+          content: r.content,
+          role: r.role,
+          modelName: r.model_name,
+          conversationId: r.conversation_id,
+          conversationTitle: r.conversation_title,
+          createdAt: new Date(r.created_at).toISOString(),
+        })),
+        total: rows.length,
+      };
+    },
+    {
+      body: t.Object({
+        query: t.String({ minLength: 1, maxLength: 500 }),
+        limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
+        conversationId: t.Optional(t.String({ format: 'uuid' })),
       }),
     },
   );

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown, Keyboard } from "lucide-react";
+import { Send, Square, Plus, Clock, Zap, Hash, Undo2, Redo2, GitBranch, PanelLeft, PanelLeftClose, ChevronDown, Keyboard, Search } from "lucide-react";
+import { SearchModal } from "./SearchModal";
 
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
@@ -239,6 +240,8 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
   const [selectedTreeId, setSelectedTreeId] = useState<string | number | null>(null);
   const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { setConversation } = useLLM();
 
   // Close dropdown on outside click
   const pageDropdownRef = useRef<HTMLDivElement>(null);
@@ -268,6 +271,13 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
       if (e.key === '?' && !isInInput) {
         e.preventDefault();
         setShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd/Ctrl+K — toggle search (only when not in input)
+      if ((mod || e.altKey) && e.key === 'k' && !isInInput) {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
         return;
       }
 
@@ -458,6 +468,13 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
           {/* Right: controls */}
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => setSearchOpen(true)}
+              className="flex items-center justify-center rounded-lg p-1.5 text-[#6d6d6d] hover:text-black hover:bg-[#f5f5f5] transition-colors cursor-pointer"
+              title="Search messages"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => {
                 setShortcutsOpen(true);
               }}
@@ -614,6 +631,13 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
       </div>
 
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <SearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigateToConversation={(convId, _msgId) => {
+          setConversation(convId);
+        }}
+      />
     </div>
   );
 }
