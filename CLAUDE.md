@@ -65,15 +65,17 @@ DB_NAME=chat_ai
 
 **Key components:**
 
-- `ChatApp` — main chat UI with sidebar, header navbar, message list, tree view, undo/redo, settings routing
+- `ChatApp` — main chat UI with sidebar, header, message list, tree view, undo/redo, Settings modal overlay
 - `MessageBubble` — individual message display with edit/re-question/re-answer/copy
 - `MessageTree` — renders messages as parent/child tree nodes
 - `ConversationList` — left sidebar conversation history panel
 - `ConversationItem` — single conversation row in sidebar
 - `ModelSelector` — embedded model pill in input field
-- `SettingsPage` — settings UI (theme, generation, budget, data) at `activePage === 'settings'`
+- `SettingsPage` — settings modal overlay with backdrop blur (generation, budget, data)
+- `RightPanel` — hover-expand navigation panel on right edge (Chat, Settings, New Chat, Search, Undo, Redo, Tree View, Shortcuts)
 - `KeyboardShortcutsModal` — shortcuts help dialog, toggled with `?` key
 - `TokenBudgetBanner` — color-coded usage indicator beneath chat
+- `SearchModal` — cross-conversation search modal, toggled with `Cmd/Ctrl+K`
 - `LiquidIntro` / `LandingPage` — splash/landing screens
 
 ### API Routes (`server/routes/`)
@@ -136,9 +138,13 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 - **Reasoning display** — toggle between `<think>` reasoning blocks and final answer
 - **Edit user message** — pencil icon on hover, edit content and re-generate from that point
 - **Re-answer** — discard assistant response and regenerate with current model
+- **Re-question** — fork from any user message with new content, creates child node via `parentId` FK
 - **Copy response** — one-click copy assistant message to clipboard
 - **Suggested questions** — vector-similarity-based suggestion cards after each assistant response
-- **Example prompts** — four starter prompts on the welcome screen
+- **Example prompts** — four starter prompts on the welcome screen (`ChatApp.tsx`)
+- **Message tree branching** — branched messages stored as parent/child via `parentId` FK
+- **View toggle** — switch between flat list and tree hierarchy via `GitBranch` icon
+- **Select & scroll** — clicking a tree node scrolls to that message in the linear view
 
 ### Conversation Management
 
@@ -148,24 +154,34 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 - **Switch conversation** — click any sidebar item to load that conversation
 - **Conversation persistence** — all conversations and messages saved to PostgreSQL
 
+### Navigation & Layout
+
+- **Sidebar toggle** — `PanelLeft` / `PanelLeftClose` button in header
+- **Right Panel** — hover-expand navigation panel on right edge (`RightPanel.tsx`)
+  - Collapsed: 48px icon strip with light theme (white/80 backdrop-blur)
+  - Expanded: 200px with icon + label, smooth CSS transition
+  - Items: Chat, Settings, New Chat, Search, Undo, Redo, Tree View, Shortcuts
+  - Active item highlighted with purple `#5505af` background
+  - Divider lines separating navigation sections
+- **Settings modal** — backdrop blur overlay with centered card instead of full-page
+  - Modal rendered conditionally as overlay on top of chat view
+  - Click backdrop to dismiss, or close via ← button
+  - Generation settings (max tokens, system prompt, auto-summarize)
+  - Token Budget settings with slider toggle
+  - Data section (localStorage info, reset to defaults)
+- **Splash & landing** — `LiquidIntro` animation on app boot → `LandingPage` with model download progress → chat interface
+
+### Search
+
+- **Cross-conversation search** — `SearchModal` component with Ctrl+K / Cmd+K keyboard shortcut
+- **Modal UI** — search input with conversation navigation
+- **Embedding-powered** — vector similarity search over user messages
+
 ### Message History (Undo/Redo)
 
 - **Undo** (`Ctrl+Z` / `Cmd+Z`) — revert the last message action (send, edit, re-question, re-answer)
 - **Redo** (`Ctrl+Shift+Z` / `Cmd+Shift+Z`) — re-apply a previously undone action
-- **Header buttons** — undo/redo icons in the right section of the header
 - **Stack depth** — up to 20 checkpoints
-
-### Message Tree View
-
-- **Toggle linear/tree** — `GitBranch` icon in header switches between list and tree view
-- **Tree layout** — messages shown as parent/child nodes using `parentId` links
-- **Select & scroll** — clicking a tree node scrolls to that message in the linear view
-
-### Navigation & Layout
-
-- **Sidebar toggle** — `PanelLeft` / `PanelLeftClose` button in header
-- **Navbar menu** — dropdown selector (Chat, Settings) in header center
-- **Responsive** — sidebar collapses on small screens, "New chat" text hidden on mobile
 
 ### Metrics Display
 
@@ -187,42 +203,30 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 - **Think stream parser** — parses `<think>` reasoning blocks separately from final answer via `ThinkStreamParser`
 - **Auto-load embedding model** — Qwen3-Embedding-0.6B auto-loads on first conversation activation
 
-### Message Branching
-
-- **Re-question** — fork from a user message with new content, creates child node via `parentId` FK
-- **Re-answer** — discard assistant response and regenerate with current model from the previous message
-- **Tree persistence** — branched messages stored as parent/child via `parentId` in messages table
-- **View toggle** — switch between flat list and tree hierarchy via `GitBranch` button in header
-
-### Settings & Preferences
-
-- **Settings page** — accessible from navbar dropdown, manages all user preferences via `activePage` routing
-- **System prompt** — configurable in Settings, injected as first system message in generation context
-- **Max tokens override** — per-user token limit overrides model defaults during generation
-- **Font size** — 14–22px slider, scoped to `--chat-font-size` CSS custom property on `:root`
-- **Persistent storage** — all settings stored in `localStorage` via `useAppSettings` hook
-
-### Theme & Appearance
-
-- **Dark mode** — toggle via Settings, toggles `.dark` class on `<html>` with full CSS variable overrides
-- **Smooth transitions** — background/color transition on theme switch (200ms ease)
-- **Dark scrollbar** — custom scrollbar colors for dark mode
-
-### Keyboard Shortcuts
-
-- **`?`** — toggle shortcuts help modal (ignored when typing in input)
-- **`Ctrl+Z` / `Cmd+Z`** — undo last message action
-- **`Ctrl+Shift+Z` / `Cmd+Shift+Z`** — redo undone action
-- **`Enter`** — send message
-- **`Shift+Enter`** — new line in textarea
-- **`Escape`** — close modals, stop generation (ignored when typing in input)
-
 ### Token Management
 
 - **Token budget** — configurable limit (1,000–100,000) with banner showing usage
 - **Usage states** — green (under 80%), orange warning (80–100%), red exceeded (over 100%)
 - **Animated progress bar** — visual fill showing percentage of budget consumed
 - **Auto-summarize titles** — generates conversation title from first user message by default (can be toggled off)
+
+### Theme & Appearance
+
+- **Dark mode** — toggled via Settings, toggles `.dark` class on `<html>` with full CSS variable overrides
+- **Font size** — 14–22px range, scoped to `--chat-font-size` CSS custom property on `:root`
+- **Smooth transitions** — background/color transition on theme switch (200ms ease)
+- **Dark scrollbar** — custom scrollbar colors for dark mode
+
+### Keyboard Shortcuts
+
+- **`?`** — toggle shortcuts help modal (ignored when typing in input)
+- **`Cmd/Ctrl+K`** — open search modal (ignored when typing in input)
+- **`Ctrl+Z` / `Cmd+Z`** — undo last message action
+- **`Ctrl+Shift+Z` / `Cmd+Shift+Z`** — redo undone action
+- **`Enter`** — send message
+- **`Shift+Enter`** — new line in textarea
+- **`Escape`** — close modals, stop generation (ignored when typing in input)
+- **Shortcuts modal** — `KeyboardShortcutsModal` overlay listing all keyboard shortcuts
 
 ### Data Export
 
