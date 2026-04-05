@@ -14,7 +14,7 @@ const math = createMathPlugin({ singleDollarTextMath: true });
 
 const EXEC_RENDERERS: PluginConfig['renderers'] = [
   {
-    language: ['javascript', 'js', 'typescript', 'ts', 'python', 'py', 'sql', 'sqlite'],
+    language: ['javascript', 'js', 'typescript', 'ts', 'python', 'py', 'sql', 'sqlite', 'html'],
     component: ExecutableCodeBlock,
   },
 ];

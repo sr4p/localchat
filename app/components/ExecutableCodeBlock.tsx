@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Play, Loader2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Loader2, Copy, Check, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import type { CustomRendererProps } from 'streamdown';
 import { useCodeExec } from '../context/CodeExecContext';
 import type { ExecutionResult } from '../utils/jsWorkerRunner';
@@ -17,6 +17,7 @@ const RUNNABLE_LANGS: Record<string, string> = {
   py: 'py',
   sql: 'sql',
   sqlite: 'sql',
+  html: 'html',
 };
 
 function normalizeLang(lang: string): string | null {
@@ -29,6 +30,7 @@ function canExecute(lang: string, settings: { enablePythonExec: boolean; enableS
   if (n === 'js') return true;
   if (n === 'py') return settings.enablePythonExec;
   if (n === 'sql') return settings.enableSQLExec;
+  if (n === 'html') return true;
   return false;
 }
 
@@ -92,7 +94,33 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
   const [pyProgress, setPyProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const handleRun = useCallback(async () => {
+  // Edit mode state
+  const [displayCode, setDisplayCode] = useState(code);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCode, setEditCode] = useState('');
+  const [renderKey, setRenderKey] = useState(1);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [previewVisible, setPreviewVisible] = useState(true);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditing]);
+
+  // Delay preview reveal on save to avoid layout flash
+  useEffect(() => {
+    if (result) {
+      setPreviewVisible(false);
+      const t = setTimeout(() => setPreviewVisible(true), 50);
+      return () => clearTimeout(t);
+    }
+  }, [result]);
+
+  const isHTML = normalized === 'html';
+
+  const handleRun = useCallback(async (sourceCode?: string) => {
+    const src = sourceCode ?? displayCode;
     if (!executable || isIncomplete) return;
 
     setIsRunning(true);
@@ -101,6 +129,13 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
     setSqlColumns(null);
     setError(null);
     setShowOutput(true);
+
+    // HTML: no execution needed, just set a result flag
+    if (isHTML) {
+      setResult({ output: '', error: null, result: '', durationMs: Math.round(performance.now() % 100) });
+      setIsRunning(false);
+      return;
+    }
 
     if (normalized === 'py' && !isPyodideLoaded()) {
       setPyLoading(true);
@@ -111,13 +146,12 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
       let res: ExecutionResult;
 
       if (normalized === 'js') {
-        res = await runJavaScript(code);
+        res = await runJavaScript(src);
       } else if (normalized === 'py') {
-        res = await runPython(code);
+        res = await runPython(src);
         setPyLoading(false);
-        setPyProgress('');
       } else if (normalized === 'sql') {
-        const sqlRes = await runSQL(code) as SQLResult;
+        const sqlRes = await runSQL(src) as SQLResult;
         res = {
           output: sqlRes.output,
           error: sqlRes.error,
@@ -127,6 +161,8 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
         if (sqlRes.rows && sqlRes.rows.length > 0) {
           setSqlRows(sqlRes.rows);
           setSqlColumns(sqlRes.columns[0] ?? null);
+        } else {
+          res = { output: sqlRes.output, error: sqlRes.error, result: sqlRes.result, durationMs: sqlRes.durationMs };
         }
       } else {
         setIsRunning(false);
@@ -142,13 +178,29 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
       setPyLoading(false);
       setPyProgress('');
     }
-  }, [code, executable, isIncomplete, normalized]);
+  }, [displayCode, executable, isIncomplete, normalized, isHTML]);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(code);
+    await navigator.clipboard.writeText(displayCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [code]);
+  }, [displayCode]);
+
+  const handleEdit = useCallback(() => {
+    setEditCode(displayCode);
+    setIsEditing(true);
+  }, [displayCode]);
+
+  const handleSave = useCallback(() => {
+    setDisplayCode(editCode);
+    setIsEditing(false);
+    handleRun(editCode);
+  }, [editCode, handleRun]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditCode(displayCode);
+  }, [displayCode]);
 
   // Fallback for non-executable languages
   if (!executable) {
@@ -172,32 +224,77 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
         <div className="flex items-center gap-1.5">
           {/* Copy */}
           <button
-            onClick={handleCopy}
+            onClick={() => handleCopy()}
             className="rounded-md p-1 text-[#8888aa] hover:text-[#5505af] hover:bg-[#ede7fa] transition-colors cursor-pointer"
             title="Copy code"
           >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
-          {/* Run */}
-          <button
-            onClick={handleRun}
-            disabled={isRunning || pyLoading || isIncomplete}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors cursor-pointer flex items-center gap-1.5
-              ${isRunning || pyLoading || isIncomplete
-                ? 'bg-[#5505af]/50 cursor-not-allowed'
-                : 'bg-[#5505af] hover:bg-[#44048f] active:bg-[#6e15c6]'
-              }`}
-          >
-            {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-            {pyLoading ? 'Loading…' : 'Run'}
-          </button>
+          {isEditing ? (
+            <>
+              {/* Cancel */}
+              <button
+                onClick={handleCancelEdit}
+                className="rounded-md px-2.5 py-1 text-[11px] font-medium text-[#6d6d6d] hover:text-black hover:bg-[#e8e8ef] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              {/* Run */}
+              <button
+                onClick={handleSave}
+                disabled={isRunning || pyLoading || isIncomplete}
+                className="rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors cursor-pointer flex items-center gap-1.5 bg-[#5505af] hover:bg-[#44048f] active:bg-[#6e15c6]"
+              >
+                <Play className="h-3 w-3" />
+                Run
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Edit */}
+              <button
+                onClick={handleEdit}
+                className="rounded-md p-1 text-[#8888aa] hover:text-[#5505af] hover:bg-[#ede7fa] transition-colors cursor-pointer"
+                title="Edit code"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              {/* Run */}
+              <button
+                onClick={() => handleRun()}
+                disabled={isRunning || pyLoading || isIncomplete}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors cursor-pointer flex items-center gap-1.5
+                  ${isRunning || pyLoading || isIncomplete
+                    ? 'bg-[#5505af]/50 cursor-not-allowed'
+                    : 'bg-[#5505af] hover:bg-[#44048f] active:bg-[#6e15c6]'
+                  }`}
+              >
+                {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                {pyLoading ? 'Loading…' : 'Run'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Code */}
-      <pre className="overflow-x-auto p-4 font-mono text-sm leading-relaxed whitespace-pre">
-        <HighlightedCode code={code} language={language} />
-      </pre>
+      {/* Code (view mode) */}
+      {!isEditing && (
+        <pre className="overflow-x-auto p-4 font-mono text-sm leading-relaxed whitespace-pre">
+          <HighlightedCode code={displayCode} language={language} />
+        </pre>
+      )}
+
+      {/* Code (edit mode) */}
+      {isEditing && (
+        <textarea
+          ref={textareaRef}
+          value={editCode}
+          onChange={(e) => setEditCode(e.target.value)}
+          className="w-full bg-[#fafafa] text-[#1a1a2e] font-mono text-sm p-4 leading-relaxed resize-none focus:outline-none"
+          style={{ minHeight: '70px' }}
+          spellCheck={false}
+        />
+      )}
 
       {/* Pyodide loading indicator */}
       {pyLoading && (
@@ -208,7 +305,7 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
       )}
 
       {/* Output toggle */}
-      {(result || error) && (
+      {(result || error || isHTML) && (
         <div className="border-t border-[#0000001f]">
           <button
             onClick={() => setShowOutput((p) => !p)}
@@ -217,6 +314,8 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
             <span className="flex items-center gap-1.5">
               {error ? (
                 <span className="text-red-600">● Error</span>
+              ) : isHTML ? (
+                <span className="text-blue-600">● Preview</span>
               ) : (
                 <span className="text-emerald-600">● Output</span>
               )}
@@ -227,8 +326,25 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
 
           {showOutput && (
             <div>
-              {/* Text output */}
-              {(result?.output || result?.result || error) && (
+              {/* HTML iframe preview */}
+              {isHTML && (
+                <div
+                  className={`overflow-hidden transition-opacity duration-300 ${
+                    previewVisible ? 'opacity-100' : 'opacity-0'
+                  }`}
+                >
+                  <iframe
+                    key={renderKey}
+                    srcDoc={isEditing ? editCode : displayCode}
+                    sandbox="allow-scripts"
+                    className="w-full h-64 border-0 bg-white"
+                    title="HTML preview"
+                  />
+                </div>
+              )}
+
+              {/* Text / stdout */}
+              {!isHTML && (result?.output || result?.result || error) && (
                 <pre className={`overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre ${error ? 'bg-red-50 text-red-700' : 'bg-white text-[#1a1a2e]'}`}>
                   <code className="font-mono">
                     {error || result?.output || result?.result}
@@ -237,7 +353,7 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
               )}
 
               {/* SQL table */}
-              {sqlColumns && sqlRows && sqlRows[0]?.length > 0 && (
+              {!isHTML && sqlColumns && sqlRows && sqlRows[0]?.length > 0 && (
                 <div className="overflow-x-auto bg-white">
                   <table className="w-full border-collapse text-xs">
                     <thead>
