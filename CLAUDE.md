@@ -66,17 +66,33 @@ DB_NAME=chat_ai
 **Key components:**
 
 - `ChatApp` — main chat UI with sidebar, header, message list, tree view, undo/redo, Settings modal overlay
-- `MessageBubble` — individual message display with edit/re-question/re-answer/copy
+- `MessageBubble` — individual message display with edit/re-question/re-answer/copy, `ReasoningBlock` for `<think>`
+- `ReasoningBlock` — collapsible reasoning/thinking display with shimmer animation and timer
 - `MessageTree` — renders messages as parent/child tree nodes
 - `ConversationList` — left sidebar conversation history panel
 - `ConversationItem` — single conversation row in sidebar
-- `ModelSelector` — embedded model pill in input field
-- `SettingsPage` — settings modal overlay with backdrop blur (generation, budget, data)
+- `ModelSelector` — embedded model pill in input field with per-model download progress, estimated size, and cache clear
+- `SettingsPage` — settings modal overlay (generation, budget, data, code execution)
+- `ExecutableCodeBlock` — streamdown custom renderer for runnable JS/Python/SQL/HTML code blocks
 - `RightPanel` — hover-expand navigation panel on right edge (Chat, Settings, New Chat, Search, Undo, Redo, Tree View, Shortcuts)
 - `KeyboardShortcutsModal` — shortcuts help dialog, toggled with `?` key
 - `TokenBudgetBanner` — color-coded usage indicator beneath chat
 - `SearchModal` — cross-conversation search modal, toggled with `Cmd/Ctrl+K`
+- `ToastContainer` — toast notification overlay (success/error/warning/info) with `toast()` utility
+- `StatusBar` — model loading progress/error indicator shown above messages
+- `ErrorFallback` — error boundary UI with "Try again" button
 - `LiquidIntro` / `LandingPage` — splash/landing screens
+
+**Code execution runtime (`app/utils/`):**
+
+- `jsWorkerRunner.ts` — JavaScript execution in sandboxed Web Worker (no DOM/window access, 10s timeout)
+- `pyodideRunner.ts` — Python execution via Pyodide (v0.27.2) loaded from CDN (~10 MB on first use), stdout/stderr capture
+- `sqlRunner.ts` — SQL execution via sql.js v1.12.0 (SQLite in-browser), fresh in-memory DB per execution
+- `ExecutableCodeBlock.tsx` — streamdown `CustomRenderer` supporting JS/TS, Python, SQL, HTML with run/inline output/edit/copy/expand
+
+**Error handling:**
+
+- `ErrorBoundary.tsx` — React error boundary wrapping the full App, renders `ErrorFallback` on crash
 
 ### API Routes (`server/routes/`)
 
@@ -113,7 +129,7 @@ Uses a separate test database via `test/docker-compose.yml`. `test/setup.ts` pro
 
 ## Model Registry (`app/utils/model-registry.ts`)
 
-Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (local/api), dtype, maxNewTokens, supportsReasoning. The active model is tracked via `activeModelId` state in LLMProvider and can be switched mid-conversation.
+Models are defined as `ModelConfigWithSize[]`. Each has: id, displayName, hfRepo, type (local/api), dtype, maxNewTokens, supportsReasoning, **estimatedSizeMB**. The active model is tracked via `activeModelId` state in LLMProvider and can be switched mid-conversation. Helpers: `getModelById(id)`, `DEFAULT_MODEL_ID`.
 
 ## Embedding Flow
 
@@ -124,7 +140,7 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 
 ### Settings & Utilities
 
-**`useAppSettings` hook** (`app/hooks/useAppSettings.ts`): React hook for reading/updating user settings from `localStorage`. Provides `settings`, `update(key, value)`, and `reset()`. Manages `.dark` class on `<html>` for theme toggling and `--chat-font-size` CSS variable for font sizing.
+**`useAppSettings` hook** (`app/hooks/useAppSettings.ts`): React hook for reading/updating user settings from `localStorage`. Provides `settings`, `update(key, value)`, and `reset()`. Manages `.dark` class on `<html>` for theme toggling and `--chat-font-size` CSS variable for font sizing. Settings include: `maxTokens`, `systemPrompt`, `autoSummarize`, `tokenBudget`, `enablePythonExec`, `enableSQLExec`.
 
 **`autoSummarize` utility** (`app/utils/autoSummarize.ts`): Generates concise conversation titles from the first user message. Strips code blocks, inline code, URLs, markdown links, and LaTeX. Truncates to 50 chars at word boundary.
 
@@ -135,7 +151,7 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 ### Chat & Messages
 
 - **Send/Receive** — send text messages, stream assistant responses from WebGPU model
-- **Reasoning display** — toggle between `<think>` reasoning blocks and final answer
+- **Reasoning display** — `ReasoningBlock` with collapsible `<think>` reasoning, shimmer animation while thinking, display of thinking duration
 - **Edit user message** — pencil icon on hover, edit content and re-generate from that point
 - **Re-answer** — discard assistant response and regenerate with current model
 - **Re-question** — fork from any user message with new content, creates child node via `parentId` FK
@@ -145,6 +161,7 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 - **Message tree branching** — branched messages stored as parent/child via `parentId` FK
 - **View toggle** — switch between flat list and tree hierarchy via `GitBranch` icon
 - **Select & scroll** — clicking a tree node scrolls to that message in the linear view
+- **Executable code blocks** — assistant code blocks can be run in-browser (JS/Python/SQL), see Code Execution section below
 
 ### Conversation Management
 
@@ -163,13 +180,14 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
   - Items: Chat, Settings, New Chat, Search, Undo, Redo, Tree View, Shortcuts
   - Active item highlighted with purple `#5505af` background
   - Divider lines separating navigation sections
-- **Settings modal** — backdrop blur overlay with centered card instead of full-page
+- **Settings modal** — backdrop blur overlay with centered card (`SettingsPage.tsx`)
   - Modal rendered conditionally as overlay on top of chat view
   - Click backdrop to dismiss, or close via ← button
-  - Generation settings (max tokens, system prompt, auto-summarize)
-  - Token Budget settings with slider toggle
-  - Data section (localStorage info, reset to defaults)
-- **Splash & landing** — `LiquidIntro` animation on app boot → `LandingPage` with model download progress → chat interface
+  - **Generation**: max tokens (1–65536), system prompt textarea, auto-summarize titles toggle
+  - **Token Budget**: toggle slider (1,000–100,000), usage percentage display, destructive red when exceeded
+  - **Data**: localStorage info, reset to defaults
+  - **Code Execution**: JavaScript (always on), Python toggle (Pyodide from CDN), SQL toggle (sql.js)
+- **Splash & landing** — `LiquidIntro` animation on app boot → `LandingPage` with "Load model & start chatting" CTA → chat interface (model loading happens in-chat via ModelSelector)
 
 ### Search
 
@@ -193,8 +211,26 @@ Models are defined as `ModelConfig[]`. Each has: id, displayName, hfRepo, type (
 ### Model Management
 
 - **Model switching** — switch active model mid-conversation via `ModelSelector` pill in input field
-- **Model download progress** — LandingPage shows download percentage during initial model load
+- **Model download** — per-model download with progress bar and percentage in the ModelSelector dropdown
+- **Model cache management** — "Delete data" button per model in selector to clear cached weights from browser Cache Storage
+- **Estimated size** — each model shows approximate download size (~MB) in selector
 - **Multi-model registry** — models defined in `app/utils/model-registry.ts`, supports `type: 'local'` (WebGPU) and `type: 'api'`
+- **Model registry types** — `ModelConfigWithSize` with `estimatedSizeMB` field; helpers: `getModelById()`, `DEFAULT_MODEL_ID`
+
+### Code Execution
+
+- **In-browser code execution** — runnable code blocks inside assistant responses via `ExecutableCodeBlock` custom streamdown renderer
+- **JavaScript** — always enabled, runs in sandboxed Web Worker (no DOM/window access, 10s timeout) via blob URL worker
+- **Python** — toggle-gated in Settings, loads Pyodide v0.27.2 from CDN (~10 MB on first use), captures stdout/stderr
+- **SQL (SQLite)** — toggle-gated in Settings, loads sql.js v1.12.0, fresh in-memory DB per execution, supports SELECT/pragma (returns rows/columns) and DML (reports affected rows)
+- **HTML** — rendered as output directly
+- **Code block features** — run button with loading spinner, inline output panel, copy output, expand/collapse, edit code in-place
+
+### Toast Notifications
+
+- **Toast system** — `ToastContainer` shows styled toast alerts (success/error/warning/info) with icons and auto-animations
+- **`toast()` utility** — `app/utils/toast.ts` provides toast(type, message) with subscribe/dismiss API
+- **Position** — fixed top-right overlay with `z-[9999]`
 
 ### Streaming & Generation
 

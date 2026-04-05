@@ -25,7 +25,10 @@ function normalizeLang(lang: string): string | null {
   return RUNNABLE_LANGS[lower] ?? null;
 }
 
-function canExecute(lang: string, settings: { enablePythonExec: boolean; enableSQLExec: boolean }): boolean {
+function canExecute(
+  lang: string,
+  settings: { enablePythonExec: boolean; enableSQLExec: boolean },
+): boolean {
   const n = normalizeLang(lang);
   if (n === 'js') return true;
   if (n === 'py') return settings.enablePythonExec;
@@ -39,7 +42,9 @@ function renderHighlighted(tokens: { content: string; htmlStyle?: Record<string,
   return tokens.map((line, li) => (
     <span key={li}>
       {line.map((token, ti) => (
-        <span key={ti} style={token.htmlStyle}>{token.content}</span>
+        <span key={ti} style={token.htmlStyle}>
+          {token.content}
+        </span>
       ))}
       {li < tokens.length - 1 ? '\n' : ''}
     </span>
@@ -98,15 +103,36 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
   const [displayCode, setDisplayCode] = useState(code);
   const [isEditing, setIsEditing] = useState(false);
   const [editCode, setEditCode] = useState('');
-  const [renderKey, setRenderKey] = useState(1);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future force-re-render
+  const renderKey = useState(1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [previewVisible, setPreviewVisible] = useState(true);
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, [isEditing]);
+
+  // Auto-compile JS after 2s idle delay; also re-grow textarea each keystroke
+  useEffect(() => {
+    if (!isEditing || normalized !== 'js') return;
+
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+
+    if (!editCode.trim()) return;
+
+    const t = setTimeout(() => {
+      handleRun(editCode);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [editCode, isEditing, normalized]);
 
   // Delay preview reveal on save to avoid layout flash
   useEffect(() => {
@@ -119,66 +145,79 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
 
   const isHTML = normalized === 'html';
 
-  const handleRun = useCallback(async (sourceCode?: string) => {
-    const src = sourceCode ?? displayCode;
-    if (!executable || isIncomplete) return;
+  const handleRun = useCallback(
+    async (sourceCode?: string) => {
+      const src = sourceCode ?? displayCode;
+      if (!executable || isIncomplete) return;
 
-    setIsRunning(true);
-    setResult(null);
-    setSqlRows(null);
-    setSqlColumns(null);
-    setError(null);
-    setShowOutput(true);
+      setIsRunning(true);
+      setResult(null);
+      setSqlRows(null);
+      setSqlColumns(null);
+      setError(null);
+      setShowOutput(true);
 
-    // HTML: no execution needed, just set a result flag
-    if (isHTML) {
-      setResult({ output: '', error: null, result: '', durationMs: Math.round(performance.now() % 100) });
-      setIsRunning(false);
-      return;
-    }
-
-    if (normalized === 'py' && !isPyodideLoaded()) {
-      setPyLoading(true);
-      setPyProgress('Loading Pyodide (~10 MB)…');
-    }
-
-    try {
-      let res: ExecutionResult;
-
-      if (normalized === 'js') {
-        res = await runJavaScript(src);
-      } else if (normalized === 'py') {
-        res = await runPython(src);
-        setPyLoading(false);
-      } else if (normalized === 'sql') {
-        const sqlRes = await runSQL(src) as SQLResult;
-        res = {
-          output: sqlRes.output,
-          error: sqlRes.error,
-          result: sqlRes.result,
-          durationMs: sqlRes.durationMs,
-        };
-        if (sqlRes.rows && sqlRes.rows.length > 0) {
-          setSqlRows(sqlRes.rows);
-          setSqlColumns(sqlRes.columns[0] ?? null);
-        } else {
-          res = { output: sqlRes.output, error: sqlRes.error, result: sqlRes.result, durationMs: sqlRes.durationMs };
-        }
-      } else {
+      // HTML: no execution needed, just set a result flag
+      if (isHTML) {
+        setResult({
+          output: '',
+          error: null,
+          result: '',
+          durationMs: Math.round(performance.now() % 100),
+        });
         setIsRunning(false);
         return;
       }
 
-      setResult(res);
-      if (res.error) setError(res.error);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsRunning(false);
-      setPyLoading(false);
-      setPyProgress('');
-    }
-  }, [displayCode, executable, isIncomplete, normalized, isHTML]);
+      if (normalized === 'py' && !isPyodideLoaded()) {
+        setPyLoading(true);
+        setPyProgress('Loading Pyodide (~10 MB)…');
+      }
+
+      try {
+        let res: ExecutionResult;
+
+        if (normalized === 'js') {
+          res = await runJavaScript(src);
+        } else if (normalized === 'py') {
+          res = await runPython(src);
+          setPyLoading(false);
+        } else if (normalized === 'sql') {
+          const sqlRes = (await runSQL(src)) as SQLResult;
+          res = {
+            output: sqlRes.output,
+            error: sqlRes.error,
+            result: sqlRes.result,
+            durationMs: sqlRes.durationMs,
+          };
+          if (sqlRes.rows && sqlRes.rows.length > 0) {
+            setSqlRows(sqlRes.rows);
+            setSqlColumns(sqlRes.columns[0] ?? null);
+          } else {
+            res = {
+              output: sqlRes.output,
+              error: sqlRes.error,
+              result: sqlRes.result,
+              durationMs: sqlRes.durationMs,
+            };
+          }
+        } else {
+          setIsRunning(false);
+          return;
+        }
+
+        setResult(res);
+        if (res.error) setError(res.error);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsRunning(false);
+        setPyLoading(false);
+        setPyProgress('');
+      }
+    },
+    [displayCode, executable, isIncomplete, normalized, isHTML],
+  );
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(displayCode);
@@ -207,7 +246,9 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
     return (
       <div className="my-3 overflow-hidden rounded-lg border border-[#0000001f] bg-[#fafafa]">
         <div className="flex items-center justify-between border-b border-[#0000001f] bg-[#f5f5f5] px-3 py-1.5">
-          <span className="font-mono text-xs uppercase tracking-wide text-[#6d6d6d]">{language || 'code'}</span>
+          <span className="font-mono text-xs uppercase tracking-wide text-[#6d6d6d]">
+            {language || 'code'}
+          </span>
         </div>
         <pre className="overflow-x-auto p-4 font-mono text-sm leading-relaxed text-[#1a1a2e]">
           <HighlightedCode code={code} language={language} />
@@ -220,7 +261,9 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
     <div className="my-3 overflow-hidden rounded-lg border border-[#0000001f] bg-[#fafafa] shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#0000001f] bg-[#f5f5f5] px-3 py-1.5">
-        <span className="font-mono text-xs font-medium uppercase tracking-wide text-[#5505af]">{language || 'code'}</span>
+        <span className="font-mono text-xs font-medium uppercase tracking-wide text-[#5505af]">
+          {language || 'code'}
+        </span>
         <div className="flex items-center gap-1.5">
           {/* Copy */}
           <button
@@ -264,12 +307,17 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
                 onClick={() => handleRun()}
                 disabled={isRunning || pyLoading || isIncomplete}
                 className={`rounded-md px-2.5 py-1 text-[11px] font-medium text-white transition-colors cursor-pointer flex items-center gap-1.5
-                  ${isRunning || pyLoading || isIncomplete
-                    ? 'bg-[#5505af]/50 cursor-not-allowed'
-                    : 'bg-[#5505af] hover:bg-[#44048f] active:bg-[#6e15c6]'
+                  ${
+                    isRunning || pyLoading || isIncomplete
+                      ? 'bg-[#5505af]/50 cursor-not-allowed'
+                      : 'bg-[#5505af] hover:bg-[#44048f] active:bg-[#6e15c6]'
                   }`}
               >
-                {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                {isRunning ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Play className="h-3 w-3" />
+                )}
                 {pyLoading ? 'Loading…' : 'Run'}
               </button>
             </>
@@ -289,7 +337,11 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
         <textarea
           ref={textareaRef}
           value={editCode}
-          onChange={(e) => setEditCode(e.target.value)}
+          onChange={(e) => {
+            setEditCode(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = e.target.scrollHeight + 'px';
+          }}
           className="w-full bg-[#fafafa] text-[#1a1a2e] font-mono text-sm p-4 leading-relaxed resize-none focus:outline-none"
           style={{ minHeight: '70px' }}
           spellCheck={false}
@@ -321,7 +373,11 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
               )}
               {result && <span className="text-[#999]">{Math.round(result.durationMs)}ms</span>}
             </span>
-            {showOutput ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showOutput ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
           </button>
 
           {showOutput && (
@@ -345,10 +401,10 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
 
               {/* Text / stdout */}
               {!isHTML && (result?.output || result?.result || error) && (
-                <pre className={`overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre ${error ? 'bg-red-50 text-red-700' : 'bg-white text-[#1a1a2e]'}`}>
-                  <code className="font-mono">
-                    {error || result?.output || result?.result}
-                  </code>
+                <pre
+                  className={`overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre ${error ? 'bg-red-50 text-red-700' : 'bg-white text-[#1a1a2e]'}`}
+                >
+                  <code className="font-mono">{error || result?.output || result?.result}</code>
                 </pre>
               )}
 
@@ -359,7 +415,10 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
                     <thead>
                       <tr className="border-b border-[#0000001f] bg-[#f5f5f5]">
                         {sqlColumns.map((col) => (
-                          <th key={col} className="px-3 py-1.5 text-left font-semibold text-[#5505af] whitespace-nowrap">
+                          <th
+                            key={col}
+                            className="px-3 py-1.5 text-left font-semibold text-[#5505af] whitespace-nowrap"
+                          >
                             {col}
                           </th>
                         ))}
@@ -368,10 +427,20 @@ export function ExecutableCodeBlock({ code, language, isIncomplete }: CustomRend
                     <tbody>
                       {sqlRows.map((rows, ri) =>
                         rows.map((row, i) => (
-                          <tr key={`${ri}-${i}`} className="border-b border-[#0000000d] hover:bg-[#fafafa]">
+                          <tr
+                            key={`${ri}-${i}`}
+                            className="border-b border-[#0000000d] hover:bg-[#fafafa]"
+                          >
                             {sqlColumns!.map((col) => (
-                              <td key={col} className="px-3 py-1.5 whitespace-nowrap font-mono text-[#1a1a2e]">
-                                {row[col] == null ? <span className="text-[#999] italic">null</span> : String(row[col])}
+                              <td
+                                key={col}
+                                className="px-3 py-1.5 whitespace-nowrap font-mono text-[#1a1a2e]"
+                              >
+                                {row[col] == null ? (
+                                  <span className="text-[#999] italic">null</span>
+                                ) : (
+                                  String(row[col])
+                                )}
                               </td>
                             ))}
                           </tr>

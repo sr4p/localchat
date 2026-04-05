@@ -5,7 +5,6 @@ import { RightPanel } from "./RightPanel";
 
 import { useLLM } from "../hooks/useLLM";
 import { MessageBubble } from "./MessageBubble";
-import { StatusBar } from "./StatusBar";
 import { ModelSelector } from "./ModelSelector";
 import { MessageTree } from "./MessageTree";
 import { ConversationList } from "./ConversationList";
@@ -288,7 +287,7 @@ interface ChatAppProps {
 }
 
 export function ChatApp({ onGoHome }: ChatAppProps) {
-  const { messages, isGenerating, send, status, clearChat, suggestions, canUndo, canRedo, undo, redo, viewMode, setViewMode, sidebarOpen, setSidebarOpen, activePage, setActivePage, stop } = useLLM();
+  const { messages, isGenerating, send, clearChat, suggestions, canUndo, canRedo, undo, redo, viewMode, setViewMode, sidebarOpen, setSidebarOpen, activePage, setActivePage, stop } = useLLM();
   const { settings, update, reset } = useAppSettings();
   const scrollRef = useRef<HTMLElement>(null);
   const [selectedTreeId, setSelectedTreeId] = useState<string | number | null>(null);
@@ -359,7 +358,6 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
   messagesRef.current = messages;
   thinkingSecondsRef.current = thinkingSeconds;
 
-  const isReady = status.state === "ready";
   const hasMessages = messages.length > 0;
 
   useEffect(() => {
@@ -500,7 +498,6 @@ export function ChatApp({ onGoHome }: ChatAppProps) {
               className="min-h-0 flex-1 overflow-y-auto px-4 py-6 animate-fade-in"
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-4">
-                {!isReady && <StatusBar />}
 
                 {viewMode === 'tree' ? (
                   <div className="rounded-2xl border border-[#0000001f] bg-white p-2 shadow-sm">

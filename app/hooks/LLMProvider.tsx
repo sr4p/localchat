@@ -74,14 +74,16 @@ function mapServerMessageToClient(m: SavedMessageResponse): ChatMessage {
 }
 
 export function LLMProvider({ children }: { children: ReactNode }) {
-  const generatorRef = useRef<Promise<TextGenerationPipeline> | null>(null);
+  const generatorRef = useRef<Map<string, Promise<TextGenerationPipeline>>>(new Map());
   const stoppingCriteria = useRef(new InterruptableStoppingCriteria());
   const loadProgressPeakRef = useRef(0);
-  const activeModelIdRef = useRef<string>(DEFAULT_MODEL_ID);
 
   const embedding = useEmbedding();
 
+  // Overall loading status for compat
   const [status, setStatus] = useState<LoadingStatus>({ state: 'idle' });
+  // Per-model download status: unknown = not tracked, number 0-100 = downloading, ready = cached
+  const [modelStatuses, setModelStatuses] = useState<Record<string, number | 'ready'>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -94,6 +96,8 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const [activeModelId, setActiveModelId] = useState<string>(DEFAULT_MODEL_ID);
+  const activeModelIdRef = useRef<string>(DEFAULT_MODEL_ID);
+  activeModelIdRef.current = activeModelId;
 
   // View mode
   const [viewMode, setViewMode] = useState<'linear' | 'tree'>('linear');
@@ -183,51 +187,95 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     [embedding],
   );
 
-  const loadGenerator = useCallback(async () => {
-    if (generatorRef.current) return generatorRef.current;
-    const modelConfig = getModelById(activeModelIdRef.current)!;
+  /**
+   * Load (download + cache) a specific model's generator pipeline.
+   * Skips if already cached. Updates per-model status.
+   */
+  const loadGenerator = useCallback(
+    async (modelId: string) => {
+      const cached = generatorRef.current.get(modelId);
+      if (cached) return cached;
 
-    generatorRef.current = (async () => {
-      loadProgressPeakRef.current = 0;
-      setStatus({ state: 'loading', message: 'Downloading model…' });
-      try {
-        const gen = await pipeline('text-generation', modelConfig.hfRepo, {
-          dtype: modelConfig.dtype,
-          device: 'webgpu',
-          progress_callback: (p: any) => {
-            if (p.status !== 'progress' || !p.file?.endsWith('.onnx_data')) return;
-            const raw =
-              typeof p.progress === 'number' && Number.isFinite(p.progress) ? p.progress : 0;
-            const clamped = Math.min(100, Math.max(0, raw));
-            const progress = Math.max(loadProgressPeakRef.current, clamped);
-            loadProgressPeakRef.current = progress;
-            setStatus({
-              state: 'loading',
-              progress,
-              message: `Downloading model… ${Math.round(progress)}%`,
-            });
-          },
-        });
-        setStatus({ state: 'ready' });
-        return gen;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setStatus({ state: 'error', error: msg });
-        generatorRef.current = null;
-        throw err;
+      const modelConfig = getModelById(modelId)!;
+
+      const loadPromise = (async () => {
+        loadProgressPeakRef.current = 0;
+        setModelStatuses((prev) => ({ ...prev, [modelId]: 0 }));
+        try {
+          const gen = await pipeline('text-generation', modelConfig.hfRepo, {
+            dtype: modelConfig.dtype,
+            device: 'webgpu',
+            progress_callback: (p: any) => {
+              if (p.status !== 'progress' || !p.file?.endsWith('.onnx_data')) return;
+              const raw =
+                typeof p.progress === 'number' && Number.isFinite(p.progress) ? p.progress : 0;
+              const clamped = Math.min(100, Math.max(0, raw));
+              const progress = Math.max(loadProgressPeakRef.current, clamped);
+              loadProgressPeakRef.current = progress;
+              setStatus({ state: 'loading', progress, message: `${modelConfig.displayName} ${Math.round(progress)}%` });
+              setModelStatuses((prev) => ({ ...prev, [modelId]: progress }));
+            },
+          });
+          setModelStatuses((prev) => ({ ...prev, [modelId]: 'ready' }));
+          setStatus({ state: 'ready' });
+          return gen;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setStatus({ state: 'error', error: msg });
+          generatorRef.current.delete(modelId);
+          throw err;
+        }
+      })();
+
+      generatorRef.current.set(modelId, loadPromise);
+      return loadPromise;
+    },
+    [],
+  );
+
+  /** Load the currently active model. */
+  const loadModel = useCallback(
+    (modelId?: string) => {
+      const target = modelId ?? activeModelIdRef.current;
+      activeModelIdRef.current = target;
+      loadGenerator(target);
+    },
+    [loadGenerator],
+  );
+
+  /** Clear a model's cached data from browser caches. */
+  const clearModelCache = useCallback(async (modelId: string) => {
+    const modelConfig = getModelById(modelId);
+    if (!modelConfig) return;
+
+    generatorRef.current.delete(modelId);
+    setModelStatuses((prev) => {
+      const next = { ...prev };
+      delete next[modelId];
+      return next;
+    });
+
+    // Delete from Cache Storage API (used by transformers.js for ONNX files)
+    try {
+      const cacheNames = await caches.keys();
+      const repoKey = modelConfig.hfRepo.replace(/[^a-zA-Z0-9]/g, '_');
+      for (const name of cacheNames) {
+        if (name.includes(repoKey) || name.includes('transformers')) {
+          await caches.delete(name);
+        }
       }
-    })();
+    } catch {
+      // best-effort
+    }
 
-    return generatorRef.current;
+    if (activeModelIdRef.current === modelId) {
+      setStatus({ state: 'idle' });
+    }
   }, []);
-
-  const loadModel = useCallback(() => {
-    loadGenerator();
-  }, [loadGenerator]);
 
   const runGeneration = useCallback(
     async (chatHistory: ChatMessage[]) => {
-      const generator = await loadGenerator();
+      const generator = await loadGenerator(activeModelIdRef.current);
       const genStartPerf = performance.now();
       setIsGenerating(true);
       setGenerationStartPerf(genStartPerf);
@@ -246,7 +294,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
 
       const streamer = new TextStreamer(generator.tokenizer, {
         skip_prompt: true,
-        skip_special_tokens: false,
+        skip_special_tokens: true,
         callback_function: (output: string) => {
           if (output === '</s>') return;
           const deltas = parser.push(output);
@@ -637,7 +685,6 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         createConversation,
         loadConversation,
         deleteConversation,
-        loadModel,
         send,
         stop,
         clearChat,
@@ -646,7 +693,15 @@ export function LLMProvider({ children }: { children: ReactNode }) {
         reQuestion,
         reAnswer,
         suggestions,
-        models: MODEL_REGISTRY.map((m) => ({ id: m.id, displayName: m.displayName, type: m.type })),
+        models: MODEL_REGISTRY.map((m) => ({
+          id: m.id,
+          displayName: m.displayName,
+          type: m.type,
+          estimatedSizeMB: m.estimatedSizeMB,
+        })),
+        modelStatuses,
+        loadModel,
+        clearModel: clearModelCache,
         canUndo,
         canRedo,
         undo,

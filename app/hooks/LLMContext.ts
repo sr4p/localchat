@@ -37,6 +37,15 @@ export type LoadingStatus =
 
 export type ReasoningEffort = "low" | "medium" | "high";
 
+/** Per-model status tracked in the UI. */
+export type ModelStatus = "idle" | "downloading" | "ready" | "error";
+
+export interface ModelStatusInfo {
+  status: ModelStatus;
+  progress?: number; // 0-100 when downloading
+  error?: string;
+}
+
 /** Summary info for a conversation in the sidebar list. */
 export interface ConversationSummary {
   id: string;
@@ -56,7 +65,6 @@ export interface LLMContextValue {
   generationStartPerf: number | null;
   reasoningEffort: ReasoningEffort;
   setReasoningEffort: (effort: ReasoningEffort) => void;
-  loadModel: () => void;
   send: (text: string) => void;
   stop: () => void;
   clearChat: () => void;
@@ -66,6 +74,12 @@ export interface LLMContextValue {
   reQuestion: (index: number, newContent: string) => void;
   /** Discard messages after index and regenerate with current model. */
   reAnswer: (index: number, model?: string) => void;
+  /** Load (download + init) a specific model by id, or the active one if omitted. */
+  loadModel: (modelId?: string) => void;
+  /** Remove a downloaded model from browser cache. */
+  clearModel: (modelId: string) => Promise<void>;
+  /** Per-model download status: idle / downloading (number 0-100) / ready. */
+  modelStatuses: Record<string, 'idle' | 'ready' | number>;
   /** Currently active conversation UUID; null when no conversation is open. */
   activeConversationId: string | null;
   /** Switch to an existing conversation by id, or pass null to clear. */
@@ -80,8 +94,7 @@ export interface LLMContextValue {
   activeModelId: string;
   setActiveModelId: (id: string) => void;
   /** Available model configs from registry. */
-  models: Array<{ id: string; displayName: string; type: string }>;
-  /** Vector-based suggested questions from the same conversation. */
+  models: Array<{ id: string; displayName: string; type: string; estimatedSizeMB: number }>;
   suggestions: Array<{ content: string; similarity: number }>;
   /** Undo/Redo history support. */
   canUndo: boolean;
