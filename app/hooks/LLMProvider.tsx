@@ -380,6 +380,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       });
 
       // Persist assistant message to DB
+      let dbMessageId: string | null = null;
       if (activeConversationIdRef.current && assistantMsg.id) {
         try {
           const saved = await api.post<SavedMessageResponse>('/api/messages', {
@@ -392,10 +393,11 @@ export function LLMProvider({ children }: { children: ReactNode }) {
             modelName: modelConfig.displayName,
             modelType: modelConfig.type,
           });
+          dbMessageId = saved.id;
           setMessages((prev) => {
             const updated = [...prev];
             if (updated[assistantIdx]) {
-              updated[assistantIdx] = { ...updated[assistantIdx], id: saved.id };
+              updated[assistantIdx] = { ...updated[assistantIdx], id: dbMessageId! };
             }
             return updated;
           });
@@ -407,24 +409,33 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       setGenerationStartPerf(null);
       setIsGenerating(false);
 
-      // Fetch vector-based suggestions from DB
-      const userMsg = messagesRef.current.filter((m) => m.role === 'user').at(-1);
-      if (userMsg && activeConversationIdRef.current && embedding.status.state === 'ready') {
+      // Fetch vector-based suggestions cross-conversation:
+      // Embed the assistant answer content → find semantically related messages across all conversations
+      if (assistantMsg.content && embedding.status.state === 'ready') {
         try {
-          const vec = await embedding.generate(userMsg.content);
-          const excludeIds = [userMsg.id.toString()];
+          const vec = await embedding.generate(assistantMsg.content);
+
+          // Persist the assistant answer embedding to DB (use the real UUID, not local ID)
+          if (activeConversationIdRef.current && dbMessageId) {
+            await api.post('/api/embeddings/sync', {
+              items: [{ messageId: dbMessageId, embedding: vec }],
+            });
+          }
+
+          // Build exclude list: all messages in the current conversation
+          const excludeIds = messagesRef.current.map((m) => m.id.toString());
+
           const results = await api.post<Array<{ content: string; similarity: number }>>(
             '/api/embeddings/suggestions',
             {
-              conversationId: activeConversationIdRef.current,
               embedding: vec,
               excludeMessageIds: excludeIds,
               limit: 3,
             },
           );
           setSuggestions(results);
-        } catch {
-          // suggestions are non-critical — don't break the UX
+        } catch (e) {
+          console.error('[LLMProvider] Suggestions fetch failed:', e);
         }
       }
     },

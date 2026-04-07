@@ -51,10 +51,9 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
   .post(
     '/suggestions',
     async ({ body }) => {
-      const convId = body.conversationId;
       const embedding = body.embedding;
       const excludeIds = body.excludeMessageIds ?? [];
-      const limit = body.limit ?? 5;
+      const safeLimit = Math.min(Number(body.limit ?? 3), 5);
 
       if (!Array.isArray(embedding) || embedding.length === 0) {
         return [];
@@ -62,23 +61,21 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
 
       const vectorStr = `[${embedding.join(',')}]`;
 
-      if (excludeIds.length === 0) {
-        excludeIds.push('00000000-0000-0000-0000-000000000000');
-      }
+      const safeExclude = excludeIds.length > 0
+        ? `('${excludeIds.map((id: string) => id.replace(/'/g, "''")).join("','")}')`
+        : `('{00000000-0000-0000-0000-000000000000}')`;
 
       const manager = MessageEmbeddingRepository.manager;
       const results = await manager.query(
         `
-      SELECT m.id, m.content, me.embedding <=> $1::vector AS similarity
+      SELECT DISTINCT ON (m.content) m.id, m.content, me.embedding <=> $1::vector AS similarity
       FROM message_embeddings me
       INNER JOIN messages m ON me.message_id = m.id
-      WHERE m.conversation_id = $2
-        AND m.role = 'user'
-        AND m.id != ALL($3::uuid[])
-      ORDER BY similarity ASC
-      LIMIT ${Number(limit)}
+      WHERE m.id NOT IN ${safeExclude}
+      ORDER BY m.content, similarity ASC
+      LIMIT ${safeLimit}
     `,
-        [vectorStr, convId, excludeIds],
+        [vectorStr],
       );
 
       return results.map((r: any) => ({
@@ -88,7 +85,6 @@ export const embeddingRoutes = new Elysia({ prefix: '/embeddings' })
     },
     {
       body: t.Object({
-        conversationId: t.String(),
         embedding: t.Array(t.Number()),
         excludeMessageIds: t.Optional(t.Array(t.String())),
         limit: t.Optional(t.Number()),
